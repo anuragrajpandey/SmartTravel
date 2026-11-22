@@ -1,40 +1,21 @@
-# SmartTravel
+# FlipDoor
 
-Smart Travel Recommendation System - Android MVP.
+FlipDoor is an Android travel companion for destination discovery, stay and food ideas, trip budgeting, translation, weather and planning.
 
-## Current MVP
+## Features
+- Minimal dark black-and-white interface with rounded cards and restrained effects.
+- Explore, Stay, Discover, Tools and Trips sections.
+- Destination ideas, regional food guides, stay categories and hidden-place suggestions.
+- On-device budget estimator and locally saved destinations.
+- Live weather and 3-day forecast using Open-Meteo.
+- Google ML Kit translation with downloadable language models for offline use after download.
+- Map preview is a mock interface. Live maps, GPS and directions are not connected.
 
-The first Android build intentionally covers roughly 30% of the planned platform:
+## Build
+GitHub Actions → Build FlipDoor APK → Run workflow. The workflow is manual only.
+The debug APK is uploaded as the FlipDoor-debug-apk artifact.
 
-- Clean Explore screen
-- Destination search field
-- Interest/mood filters
-- Personalized-style recommendations
-- Destination details
-- Basic trip/saved ideas screen
-- Travel safety guide
-- Minimal profile screen
-- Smooth three-tab navigation
-- Apple-inspired white, spacious visual language
+## Stack
+Kotlin · Android SDK 35 · AndroidX · Material Components · Google ML Kit · Open-Meteo
 
-## Tech Stack
-
-- Kotlin
-- Android SDK 35
-- AndroidX
-- Material Components
-- Gradle
-
-## Build APK
-
-The GitHub Actions workflow is **manual only**. It does not run on push or pull requests.
-
-Go to:
-
-GitHub → Actions → Build SmartTravel APK → Run workflow
-
-The generated debug APK is uploaded as the SmartTravel-debug-apk artifact.
-
-## Package
-
-com.anuragrajpandey.smarttravel
+Package: com.anuragrajpandey.smarttravel
