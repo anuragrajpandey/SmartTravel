@@ -100,7 +100,7 @@ class MainActivity:AppCompatActivity(){
   featureCard(row1,"🍜","Food guide","Local favourites",0xFFFFF2E6.toInt()){food()}
   val row2=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
   content.addView(row2)
-  featureCard(row2,"💸","Trip budget","Know your costs",0xFFEAF8F0.toInt()){budget()}
+  featureCard(row2,"🧳","Trip planner","Dates & full budget",0xFFEAF8F0.toInt()){startActivity(android.content.Intent(this,TripPlannerActivity::class.java))}
   featureCard(row2,"🌐","Translator","Offline language packs",0xFFF2EDFF.toInt()){translate()}
   section("Discover somewhere new")
   places.take(4).forEachIndexed{index,p->
@@ -120,7 +120,7 @@ class MainActivity:AppCompatActivity(){
  private fun discover(){heading("DISCOVER","Take the quieter road.","Little-known places and slower experiences.");places.filter{it.mood=="Hidden gem"||it.name=="Gokarna"}.plus(Destination("Chopta","Uttarakhand","Mountain escape","₹6k–₹11k","Alpine meadows and the Tungnath trail.")).plus(Destination("Majuli","Assam","River island","₹8k–₹14k","Satras, river landscapes and local crafts.")).forEach{p->tile(p.name,p.region+" · "+p.budget+"\n"+p.detail){destination(p)}}}
  private fun destination(p:Destination){content.removeAllViews();heading("DESTINATION",p.name,p.region+" · "+p.mood);section("The feel");tile("Why go",p.detail);tile("Typical trip budget",p.budget);tile("Stay ideas","Hotels, hostels and homestays"){show("Stay")};tile("Local food","Regional food guide"){food()};tile("Weather","Check conditions before travelling"){weather()};content.addView(btn("Save to My Trips",true){prefs.edit().putString("saved",p.name).apply();Toast.makeText(this,"Saved "+p.name,Toast.LENGTH_SHORT).show()},LinearLayout.LayoutParams(-1,dp(50)))}
  private fun food(){content.removeAllViews();heading("FOOD","Taste the destination.","Regional favourites to try.");listOf("Rajasthan · Dal baati churma, pyaaz kachori","Uttarakhand · Kafuli, aloo ke gutke","Kerala · Appam, puttu and kadala curry","Tamil Nadu · Dosa, pongal and filter coffee","Karnataka · Bisi bele bath, neer dosa").forEach{tile(it,"Regional food guide · sample suggestions")}}
- private fun tools(){heading("TOOLS","Travel lighter.","Utilities for the road.");tile("Trip budget","Estimate trip costs"){budget()};tile("Translator","Downloadable offline language models"){translate()};tile("Live weather","Current conditions and forecast"){weather()};tile("Map preview","Mock map ready for later API integration"){mapPreview()}}
+ private fun tools(){heading("TOOLS","Travel lighter.","Utilities for the road.");tile("Trip planner","Plan dates, travellers and a full trip budget"){startActivity(android.content.Intent(this,TripPlannerActivity::class.java))};tile("Trip budget","Quick cost calculator"){budget()};tile("Translator","Downloadable offline language models"){translate()};tile("Weather calendar","Past 7 days and next 7 days"){startActivity(android.content.Intent(this,CityExplorerActivity::class.java).putExtra("city_query","Mathura"))};tile("Map preview","Mock map ready for later API integration"){mapPreview()}}
  private fun budget(){
   content.removeAllViews();heading("BUDGET PLANNER","Know your numbers.","Estimate trip costs. Your entries stay on this device.")
   val f=listOf("Days","Travellers","Stay per night (₹)","Food per person / day (₹)","Transport total (₹)","Activities & extras (₹)").map{hint->EditText(this).apply{this.hint=hint;setHintTextColor(MUTED);setTextColor(FG);background=shape(0xFFF1F4F9.toInt());setPadding(dp(12),dp(8),dp(12),dp(8))}}
@@ -169,9 +169,13 @@ class MainActivity:AppCompatActivity(){
   tile("Nearby","Hotels · Restaurants · Attractions");tile("Route planner","Multi-stop routing planned after maps API integration.")
  }
  private fun trips(){
-  heading("YOUR SPACE","Trips & saved places.","Keep the places and estimates you want to revisit.")
+  heading("YOUR SPACE","Trips & saved places.","Plan journeys, track budgets and keep destinations together.")
+  content.addView(btn("＋  Create a trip plan",true){startActivity(android.content.Intent(this,TripPlannerActivity::class.java))},LinearLayout.LayoutParams(-1,dp(50)))
   val saved=prefs.getString("saved",null);if(saved==null)tile("Nothing saved yet","Open a destination and tap Save to My Trips.")else tile(saved,"Saved locally on this phone.")
-  val budget=prefs.getLong("budget",-1);if(budget>=0)tile("Last budget estimate","₹"+ "%,d".format(Locale("en","IN"),budget))
+  val plans=runCatching{org.json.JSONArray(prefs.getString("planned_trips","[]"))}.getOrDefault(org.json.JSONArray())
+  section("Your trip plans")
+  if(plans.length()==0)tile("No planned trips yet","Create a plan to save dates, travellers and a budget.") else for(i in plans.length()-1 downTo 0){val p=plans.getJSONObject(i);tile(p.optString("name"),p.optString("destination")+" · "+p.optString("days")+" days · ₹"+ "%,.0f".format(Locale("en","IN"),p.optDouble("budget")))}
+  val budget=prefs.getLong("budget",-1);if(budget>=0)tile("Last quick budget estimate","₹"+ "%,d".format(Locale("en","IN"),budget))
   tile("Travel checklist","Documents · Stay confirmation · Local transport · Emergency contacts")
  }
 }
