@@ -53,8 +53,8 @@ class CityExplorerActivity:AppCompatActivity() {
         val go=TextView(this).apply{text="Explore destination";gravity=Gravity.CENTER;textSize=14f;setTypeface(typeface,Typeface.BOLD);setTextColor(Color.WHITE);background=panel(blue,12);setPadding(0,dp(13),0,dp(13));setOnClickListener{search(query.text.toString())}}
         searchPanel.addView(go,LinearLayout.LayoutParams(-1,dp(48)).apply{topMargin=dp(9)})
         root.addView(searchPanel,LinearLayout.LayoutParams(-1,-2).apply{setMargins(dp(16),dp(5),dp(16),dp(8))})
-        progress=ProgressBar(this).apply{isIndeterminate=true;visibility=View.GONE}
-        root.addView(progress,LinearLayout.LayoutParams(-1,dp(4)))
+        progress=ProgressBar(this,null,android.R.attr.progressBarStyleLarge).apply{isIndeterminate=true;visibility=View.GONE}
+        root.addView(progress,LinearLayout.LayoutParams(dp(48),dp(48)).apply{gravity=Gravity.CENTER_HORIZONTAL;topMargin=dp(8);bottomMargin=dp(8)})
         status=text("Search any city to build a live travel guide.",13,muted)
         status.setPadding(dp(18),dp(9),dp(18),dp(8))
         root.addView(status)
