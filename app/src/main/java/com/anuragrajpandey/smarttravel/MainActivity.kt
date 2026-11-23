@@ -19,12 +19,12 @@ import java.net.URLEncoder
 import java.util.Locale
 import kotlin.concurrent.thread
 
-private const val BG=0xFF090A0C.toInt()
-private const val PANEL=0xFF17191D.toInt()
-private const val FG=0xFFF5F5F4.toInt()
-private const val MUTED=0xFF969BA4.toInt()
-private const val ACCENT=0xFFD9D9D5.toInt()
-private const val BORDER=0xFF2B2F35.toInt()
+private const val BG=0xFFF5F7FB.toInt()
+private const val PANEL=0xFFFFFFFF.toInt()
+private const val FG=0xFF172B4D.toInt()
+private const val MUTED=0xFF718096.toInt()
+private const val ACCENT=0xFF006CE4.toInt()
+private const val BORDER=0xFFE5EAF2.toInt()
 data class Destination(val name:String,val region:String,val mood:String,val budget:String,val detail:String)
 
 class MainActivity:AppCompatActivity(){
@@ -45,43 +45,76 @@ class MainActivity:AppCompatActivity(){
  override fun onDestroy(){translator?.close();super.onDestroy()}
  private fun dp(v:Int)=(v*resources.displayMetrics.density).toInt()
  private fun shape(c:Int,r:Int=16)=GradientDrawable().apply{setColor(c);cornerRadius=dp(r).toFloat()}
+ private fun gradient(a:Int,b:Int,r:Int=22)=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(a,b)).apply{cornerRadius=dp(r).toFloat()}
  private fun txt(s:String,n:Int=14,c:Int=FG,b:Boolean=false)=TextView(this).apply{text=s;textSize=n.toFloat();setTextColor(c);if(b)setTypeface(typeface,Typeface.BOLD);setPadding(0,dp(3),0,dp(5))}
- private fun btn(s:String,primary:Boolean=false,click:()->Unit)=TextView(this).apply{text=s;gravity=Gravity.CENTER;textSize=14f;setTextColor(if(primary)BG else FG);setTypeface(typeface,Typeface.BOLD);background=shape(if(primary)ACCENT else 0xFF24272C.toInt(),14);setPadding(dp(14),dp(13),dp(14),dp(13));setOnClickListener{click()}}
- private fun heading(k:String,t:String,d:String){content.addView(txt("FLIPDOOR  /  "+k,10,MUTED,true));content.addView(txt(t,29,FG,true));content.addView(txt(d,14,MUTED))}
- private fun section(s:String){content.addView(txt(s,19,FG,true),LinearLayout.LayoutParams(-1,-2).apply{topMargin=dp(16);bottomMargin=dp(8)})}
+ private fun btn(s:String,primary:Boolean=false,click:()->Unit)=TextView(this).apply{text=s;gravity=Gravity.CENTER;textSize=14f;setTextColor(if(primary)Color.WHITE else ACCENT);setTypeface(typeface,Typeface.BOLD);background=shape(if(primary)ACCENT else 0xFFEAF3FF.toInt(),14);setPadding(dp(14),dp(13),dp(14),dp(13));setOnClickListener{click()}}
+ private fun heading(k:String,t:String,d:String){content.addView(txt(k.uppercase(Locale.getDefault()),10,ACCENT,true));content.addView(txt(t,28,FG,true));content.addView(txt(d,14,MUTED))}
+ private fun section(s:String){content.addView(txt(s,19,FG,true),LinearLayout.LayoutParams(-1,-2).apply{topMargin=dp(20);bottomMargin=dp(10)})}
+ private fun searchField(hintText:String)=EditText(this).apply{hint=hintText;setHintTextColor(MUTED);setTextColor(FG);textSize=14f;background=shape(0xFFF1F4F9.toInt(),12);setPadding(dp(14),dp(10),dp(14),dp(10))}
+ private fun featureCard(emoji:String,title:String,sub:String,color:Int,click:()->Unit){val c=LinearLayout(this).apply{orientation=1;gravity=Gravity.CENTER_VERTICAL;background=shape(color,18);setPadding(dp(14),dp(14),dp(14),dp(14));setOnClickListener{click()}};c.addView(txt(emoji,25));c.addView(txt(title,14,FG,true));c.addView(txt(sub,11,MUTED));content.addView(c,LinearLayout.LayoutParams(0,dp(112),1f).apply{setMargins(dp(3),dp(3),dp(3),dp(3)})}
  private fun tile(t:String,d:String,click:(()->Unit)?=null){
-  val c=MaterialCardView(this).apply{radius=dp(18).toFloat();cardElevation=0f;setCardBackgroundColor(PANEL);strokeWidth=dp(1);strokeColor=BORDER;if(click!=null)setOnClickListener{click()}}
-  val box=LinearLayout(this).apply{orientation=1;setPadding(dp(16),dp(14),dp(16),dp(12))}
-  box.addView(txt(t,16,FG,true));box.addView(txt(d,13,MUTED));c.addView(box);content.addView(c,LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=dp(9)})
+  val c=MaterialCardView(this).apply{radius=dp(18).toFloat();cardElevation=dp(1).toFloat();setCardBackgroundColor(PANEL);strokeWidth=dp(1);strokeColor=BORDER;if(click!=null)setOnClickListener{click()}}
+  val box=LinearLayout(this).apply{orientation=1;setPadding(dp(16),dp(13),dp(16),dp(11))}
+  box.addView(txt(t,16,FG,true));box.addView(txt(d,13,MUTED));c.addView(box);content.addView(c,LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=dp(10)})
  }
  private fun show(tab:String){
   val root=LinearLayout(this).apply{orientation=1;setBackgroundColor(BG)}
   val scroll=ScrollView(this)
   content=LinearLayout(this).apply{orientation=1;setPadding(dp(20),dp(18),dp(20),dp(22))}
   scroll.addView(content);root.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
-  val nav=LinearLayout(this).apply{gravity=Gravity.CENTER;background=shape(PANEL,18);setPadding(dp(4),dp(5),dp(4),dp(5))}
+  val nav=LinearLayout(this).apply{gravity=Gravity.CENTER;background=shape(Color.WHITE,18);elevation=dp(8).toFloat();setPadding(dp(5),dp(6),dp(5),dp(6))}
   listOf("Explore","Stay","Discover","Tools","Trips").forEach{n->
-   val v=TextView(this).apply{text=n;textSize=11f;gravity=Gravity.CENTER;setTextColor(if(n==tab)BG else MUTED);background=shape(if(n==tab)ACCENT else Color.TRANSPARENT,12);setPadding(dp(7),dp(12),dp(7),dp(12));setOnClickListener{show(n)}}
+   val icon=when(n){"Explore"->"⌂";"Stay"->"▣";"Discover"->"✦";"Tools"->"⚒";else->"♡"}
+   val v=TextView(this).apply{text=icon+"\\n"+n;textSize=10f;gravity=Gravity.CENTER;setLineSpacing(0f,1f);setTextColor(if(n==tab)ACCENT else MUTED);background=shape(if(n==tab)0xFFEAF3FF.toInt() else Color.TRANSPARENT,13);setPadding(dp(5),dp(7),dp(5),dp(7));setOnClickListener{show(n)}}
    nav.addView(v,LinearLayout.LayoutParams(0,-2,1f))
   }
-  root.addView(nav,LinearLayout.LayoutParams(-1,-2).apply{setMargins(dp(12),dp(5),dp(12),dp(8))});setContentView(root)
+  root.addView(nav,LinearLayout.LayoutParams(-1,-2).apply{setMargins(dp(12),dp(5),dp(12),dp(9))});setContentView(root)
   when(tab){"Explore"->explore();"Stay"->stay();"Discover"->discover();"Tools"->tools();else->trips()}
  }
  private fun explore(){
-  heading("YOUR TRAVEL COMPANION","Go beyond the usual.","Destinations, stays, food and useful tools in one place.")
-  val q=EditText(this).apply{hint="Search destinations";setHintTextColor(MUTED);setTextColor(FG);background=shape(0xFF22252A.toInt());setPadding(dp(14),dp(10),dp(14),dp(10))}
-  content.addView(q,LinearLayout.LayoutParams(-1,dp(50)).apply{topMargin=dp(14)})
-  q.setOnEditorActionListener{_,_,_->val s=q.text.toString();if(s.isNotBlank())destination(places.firstOrNull{it.name.contains(s,true)}?:Destination(s,"Explore","Destination","Varies","Discover stays, food and experiences around "+s));true}
-  section("Your travel toolkit")
-  tile("Hotels & stays","Hotels, hostels, homestays"){show("Stay")}
-  tile("Food guide","Regional dishes and local favourites"){food()}
-  tile("Trip budget","Estimate and track trip costs"){budget()}
-  tile("Translator","Download language packs for offline use"){translate()}
-  tile("Hidden places","Discover quieter corners"){show("Discover")}
-  tile("Live weather","Current conditions and 3-day forecast"){weather()}
-  tile("Map preview","Mock map, API integration planned"){mapPreview()}
-  section("Places to start")
-  places.take(4).forEach{p->tile(p.name,p.region+" · "+p.mood+" · "+p.budget){destination(p)}}
+  content.addView(txt("FLIPDOOR",13,ACCENT,true))
+  content.addView(txt("Your next trip starts here.",28,FG,true))
+  content.addView(txt("Find stays, explore places and plan every detail.",14,MUTED))
+  val hero=LinearLayout(this).apply{orientation=1;background=gradient(0xFF006CE4.toInt(),0xFF4C8DFF.toInt(),24);setPadding(dp(18),dp(18),dp(18),dp(18))}
+  hero.addView(txt("TRAVEL MADE SIMPLE",10,0xFFDCEBFF.toInt(),true))
+  hero.addView(txt("Where to next?",24,Color.WHITE,true))
+  hero.addView(txt("Search destinations, stays and experiences.",13,Color.WHITE))
+  val destinationInput=EditText(this).apply{hint="✈  Enter a destination";setHintTextColor(0xFF718096.toInt());setTextColor(FG);textSize=14f;background=shape(Color.WHITE,12);setPadding(dp(14),dp(12),dp(14),dp(12))}
+  hero.addView(destinationInput,LinearLayout.LayoutParams(-1,dp(48)).apply{topMargin=dp(12)})
+  val searchButton=btn("Search destinations",true){val q=destinationInput.text.toString().trim();if(q.isNotEmpty())destination(places.firstOrNull{it.name.contains(q,true)}?:Destination(q,"Explore","Destination","Varies","Discover stays, food and experiences around "+q))}
+  searchButton.background=shape(0xFFFFB700.toInt(),12);searchButton.setTextColor(0xFF172B4D.toInt())
+  hero.addView(searchButton,LinearLayout.LayoutParams(-1,dp(46)).apply{topMargin=dp(9)})
+  content.addView(hero,LinearLayout.LayoutParams(-1,-2).apply{topMargin=dp(18)})
+  section("Explore by category")
+  val categories=HorizontalScrollView(this).apply{isHorizontalScrollBarEnabled=false}
+  val chips=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
+  listOf("🏨 Stays","🍜 Food","🏞 Places","💸 Budget","🌦 Weather").forEachIndexed{index,label->
+   val v=TextView(this).apply{text=label;textSize=13f;setTextColor(if(index==0)Color.WHITE else FG);background=shape(if(index==0)ACCENT else Color.WHITE,22);setPadding(dp(15),dp(11),dp(15),dp(11));setOnClickListener{when(index){0->show("Stay");1->food();2->show("Discover");3->budget();else->weather()}}}
+   chips.addView(v,LinearLayout.LayoutParams(-2,-2).apply{rightMargin=dp(8)})
+  }
+  categories.addView(chips);content.addView(categories)
+  section("Plan your trip")
+  val row1=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
+  content.addView(row1)
+  featureCard("🏨","Stays","Hotels & more",0xFFEAF3FF.toInt()){show("Stay")}
+  featureCard("🍜","Food guide","Local favourites",0xFFFFF2E6.toInt()){food()}
+  val row2=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
+  content.addView(row2)
+  featureCard("💸","Trip budget","Know your costs",0xFFEAF8F0.toInt()){budget()}
+  featureCard("🌐","Translator","Offline language packs",0xFFF2EDFF.toInt()){translate()}
+  section("Discover somewhere new")
+  places.take(4).forEachIndexed{index,p->
+   val colors=listOf(0xFFEAF3FF.toInt(),0xFFFFF2E6.toInt(),0xFFEAF8F0.toInt(),0xFFF2EDFF.toInt())
+   val card=MaterialCardView(this).apply{radius=dp(18).toFloat();cardElevation=dp(1).toFloat();setCardBackgroundColor(Color.WHITE);strokeWidth=dp(1);strokeColor=BORDER;setOnClickListener{destination(p)}}
+   val box=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(15),dp(13),dp(15),dp(12))}
+   val tag=TextView(this).apply{text=p.mood.uppercase(Locale.getDefault());textSize=10f;setTextColor(ACCENT);setTypeface(typeface,Typeface.BOLD);background=shape(colors[index],9);setPadding(dp(9),dp(6),dp(9),dp(6))}
+   box.addView(tag,LinearLayout.LayoutParams(-2,-2))
+   box.addView(txt(p.name,18,FG,true));box.addView(txt(p.region+"  ·  "+p.budget,12,MUTED));box.addView(txt(p.detail,13,MUTED))
+   card.addView(box);content.addView(card,LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=dp(10)})
+  }
+  section("Travel essentials")
+  tile("Live weather","Check current conditions and a 3-day forecast"){weather()}
+  tile("Map preview","A route preview today, live maps integration later"){mapPreview()}
  }
  private fun stay(){heading("STAYS","Find your kind of stay.","Explore stay styles. Live booking availability is not connected.");listOf("Boutique hotels","Hostels","Homestays","Resorts & retreats").forEach{tile(it,"Sample category · connect booking inventory for live prices")};section("Popular stay areas");listOf("Jaipur · Pink City","Rishikesh · Tapovan","Goa · Anjuna","Munnar · Chithirapuram").forEach{tile(it,"Area guide · sample content")}}
  private fun discover(){heading("DISCOVER","Take the quieter road.","Little-known places and slower experiences.");places.filter{it.mood=="Hidden gem"||it.name=="Gokarna"}.plus(Destination("Chopta","Uttarakhand","Mountain escape","₹6k–₹11k","Alpine meadows and the Tungnath trail.")).plus(Destination("Majuli","Assam","River island","₹8k–₹14k","Satras, river landscapes and local crafts.")).forEach{p->tile(p.name,p.region+" · "+p.budget+"\n"+p.detail){destination(p)}}}
@@ -90,7 +123,7 @@ class MainActivity:AppCompatActivity(){
  private fun tools(){heading("TOOLS","Travel lighter.","Utilities for the road.");tile("Trip budget","Estimate trip costs"){budget()};tile("Translator","Downloadable offline language models"){translate()};tile("Live weather","Current conditions and forecast"){weather()};tile("Map preview","Mock map ready for later API integration"){mapPreview()}}
  private fun budget(){
   content.removeAllViews();heading("BUDGET PLANNER","Know your numbers.","Estimate trip costs. Your entries stay on this device.")
-  val f=listOf("Days","Travellers","Stay per night (₹)","Food per person / day (₹)","Transport total (₹)","Activities & extras (₹)").map{hint->EditText(this).apply{this.hint=hint;setHintTextColor(MUTED);setTextColor(FG);background=shape(0xFF22252A.toInt());setPadding(dp(12),dp(8),dp(12),dp(8))}}
+  val f=listOf("Days","Travellers","Stay per night (₹)","Food per person / day (₹)","Transport total (₹)","Activities & extras (₹)").map{hint->EditText(this).apply{this.hint=hint;setHintTextColor(MUTED);setTextColor(FG);background=shape(0xFFF1F4F9.toInt());setPadding(dp(12),dp(8),dp(12),dp(8))}}
   f.forEach{content.addView(it,LinearLayout.LayoutParams(-1,dp(48)).apply{bottomMargin=dp(8)})}
   val out=txt("Your estimate will appear here.",16,FG,true);content.addView(out)
   content.addView(btn("Calculate budget",true){
@@ -131,7 +164,7 @@ class MainActivity:AppCompatActivity(){
  }
  private fun mapPreview(){
   content.removeAllViews();heading("MAP PREVIEW","Your route, at a glance.","Mock interface only. Live tiles, GPS and directions are not connected.")
-  val m=TextView(this).apply{text="  ·   ╲      ●\n──────╲────\n ●─────╲──●\n ·      ╲   ·\n────●──────";textSize=25f;gravity=Gravity.CENTER;setTextColor(ACCENT);background=shape(0xFF26302C.toInt(),22)}
+  val m=TextView(this).apply{text="  ·   ╲      ●\n──────╲────\n ●─────╲──●\n ·      ╲   ·\n────●──────";textSize=25f;gravity=Gravity.CENTER;setTextColor(ACCENT);background=shape(0xFFE5EFFA.toInt(),22)}
   content.addView(m,LinearLayout.LayoutParams(-1,dp(270)).apply{topMargin=dp(12);bottomMargin=dp(12)})
   tile("Nearby","Hotels · Restaurants · Attractions");tile("Route planner","Multi-stop routing planned after maps API integration.")
  }
