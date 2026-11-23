@@ -41,7 +41,7 @@ class MainActivity:AppCompatActivity(){
  )
  private val langs=listOf("English","Hindi","Spanish","French","German","Japanese","Korean","Arabic","Portuguese","Russian","Chinese")
  private val tags=listOf("en","hi","es","fr","de","ja","ko","ar","pt","ru","zh")
- override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);window.statusBarColor=BG;window.navigationBarColor=BG;show("Explore")}
+ override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);window.statusBarColor=BG;window.navigationBarColor=Color.WHITE;show("Explore")}
  override fun onDestroy(){translator?.close();super.onDestroy()}
  private fun dp(v:Int)=(v*resources.displayMetrics.density).toInt()
  private fun shape(c:Int,r:Int=16)=GradientDrawable().apply{setColor(c);cornerRadius=dp(r).toFloat()}
@@ -68,7 +68,7 @@ class MainActivity:AppCompatActivity(){
    val v=TextView(this).apply{text=icon+"\\n"+n;textSize=10f;gravity=Gravity.CENTER;setLineSpacing(0f,1f);setTextColor(if(n==tab)ACCENT else MUTED);background=shape(if(n==tab)0xFFEAF3FF.toInt() else Color.TRANSPARENT,13);setPadding(dp(5),dp(7),dp(5),dp(7));setOnClickListener{show(n)}}
    nav.addView(v,LinearLayout.LayoutParams(0,-2,1f))
   }
-  root.addView(nav,LinearLayout.LayoutParams(-1,-2).apply{setMargins(dp(12),dp(5),dp(12),dp(9))});setContentView(root)
+  root.addView(nav,LinearLayout.LayoutParams(-1,-2).apply{setMargins(dp(12),dp(5),dp(12),dp(9))});setContentView(root);root.alpha=0f;root.translationY=dp(8).toFloat();root.animate().alpha(1f).translationY(0f).setDuration(220).start()
   when(tab){"Explore"->explore();"Stay"->stay();"Discover"->discover();"Tools"->tools();else->trips()}
  }
  private fun explore(){
