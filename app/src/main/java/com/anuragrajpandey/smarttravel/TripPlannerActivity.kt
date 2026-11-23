@@ -55,7 +55,7 @@ class TripPlannerActivity:AppCompatActivity() {
         root.addView(top)
         val scroll=ScrollView(this)
         content=LinearLayout(this).apply{orientation=1;setPadding(dp(17),dp(8),dp(17),dp(26))}
-        scroll.addView(content);root.addView(scroll)
+        scroll.addView(content);root.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
         setContentView(root)
         content.addView(label("PLAN A TRIP",10,blue,true))
         content.addView(label("Build your next getaway.",27,ink,true))
