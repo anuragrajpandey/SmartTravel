@@ -70,7 +70,7 @@ object CityDataRepository {
     private fun loadPlaces(city:CityLocation):List<CityPlace> {
         val lat=city.latitude
         val lon=city.longitude
-        val query="[out:json][timeout:25];(nwr[\"tourism\"~\"hotel|hostel|guest_house\"](around:12000,$lat,$lon);nwr[\"amenity\"~\"restaurant|cafe\"](around:12000,$lat,$lon);nwr[\"tourism\"~\"attraction|museum\"](around:12000,$lat,$lon););out center tags 100;"
+        val query="[out:json][timeout:25];(nwr[\"tourism\"~\"hotel|hostel|guest_house\"](around:12000,$lat,$lon);nwr[\"amenity\"~\"restaurant|cafe\"](around:12000,$lat,$lon);nwr[\"tourism\"~\"attraction|museum\"](around:12000,$lat,$lon););out center;"
         val connection=URL("https://overpass-api.de/api/interpreter").openConnection() as HttpURLConnection
         connection.requestMethod="POST"
         connection.doOutput=true
@@ -103,7 +103,7 @@ object CityDataRepository {
                 val pLon=e.optDouble("lon",center?.optDouble("lon") ?: city.longitude)
                 val detail=listOf(tags.optString("cuisine"),tags.optString("addr:street"),tags.optString("opening_hours")).filter{it.isNotBlank()}.joinToString(" · ").ifBlank { "OpenStreetMap listing" }
                 CityPlace(name,type,detail,pLat,pLon,tags.optString("website").takeIf{it.startsWith("http")})
-            }.distinctBy{it.name.lowercase()}.sortedBy{it.name.lowercase()}
+            }.distinctBy{it.name.lowercase()}.sortedBy{it.name.lowercase()}.take(100)
         } finally { connection.disconnect() }
     }
 
