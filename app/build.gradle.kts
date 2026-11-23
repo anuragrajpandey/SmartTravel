@@ -1,4 +1,13 @@
 plugins { id("com.android.application"); id("org.jetbrains.kotlin.android") }
+val generatedFlipDoorRes = layout.buildDirectory.dir("generated/flipdoorRes")
+sourceSets.getByName("main").res.srcDir(generatedFlipDoorRes)
+val prepareFlipDoorLauncherIcon by tasks.registering(Copy::class) {
+ from(rootProject.file("assets/FlipDoor.png"))
+ into(generatedFlipDoorRes.map { it.dir("mipmap-nodpi") })
+ rename { "ic_launcher.png" }
+}
+tasks.named("preBuild").configure { dependsOn(prepareFlipDoorLauncherIcon) }
+
 android {
  namespace="com.anuragrajpandey.smarttravel"; compileSdk=35
  defaultConfig { applicationId="com.anuragrajpandey.smarttravel"; minSdk=24; targetSdk=35; versionCode=2; versionName="1.0.0" }
