@@ -81,7 +81,7 @@ class MainActivity:AppCompatActivity(){
   hero.addView(txt("Search destinations, stays and experiences.",13,Color.WHITE))
   val destinationInput=EditText(this).apply{hint="✈  Enter a destination";setHintTextColor(0xFF718096.toInt());setTextColor(FG);textSize=14f;background=shape(Color.WHITE,12);setPadding(dp(14),dp(12),dp(14),dp(12))}
   hero.addView(destinationInput,LinearLayout.LayoutParams(-1,dp(48)).apply{topMargin=dp(12)})
-  val searchButton=btn("Search destinations",true){val q=destinationInput.text.toString().trim();if(q.isNotEmpty())destination(places.firstOrNull{it.name.contains(q,true)}?:Destination(q,"Explore","Destination","Varies","Discover stays, food and experiences around "+q))}
+  val searchButton=btn("Search destinations",true){val q=destinationInput.text.toString().trim();if(q.isNotEmpty())startActivity(android.content.Intent(this,CityExplorerActivity::class.java).putExtra("city_query",q))}
   searchButton.background=shape(0xFFFFB700.toInt(),12);searchButton.setTextColor(0xFF172B4D.toInt())
   hero.addView(searchButton,LinearLayout.LayoutParams(-1,dp(46)).apply{topMargin=dp(9)})
   content.addView(hero,LinearLayout.LayoutParams(-1,-2).apply{topMargin=dp(18)})
