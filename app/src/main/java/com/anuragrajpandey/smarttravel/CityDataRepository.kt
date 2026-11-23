@@ -62,7 +62,7 @@ object CityDataRepository {
             val code=daily.optJSONArray("weather_code")?.optInt(i) ?: -1
             date+"|"+low+"|"+high+"|"+rain+"|"+rainMm+"|"+weatherLabel(code)
         }
-        WeatherSnapshot(current.getDouble("temperature_2m"),current.getDouble("apparent_temperature"),current.getInt("relative_humidity_2m"),current.getDouble("wind_speed_10m"),weatherLabel(current.optInt("weather_code")),forecast)
+        return WeatherSnapshot(current.getDouble("temperature_2m"),current.getDouble("apparent_temperature"),current.getInt("relative_humidity_2m"),current.getDouble("wind_speed_10m"),weatherLabel(current.optInt("weather_code")),forecast)
     }
 
     private fun weatherLabel(code:Int)=when(code) {
