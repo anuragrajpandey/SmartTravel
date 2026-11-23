@@ -51,7 +51,7 @@ class MainActivity:AppCompatActivity(){
  private fun heading(k:String,t:String,d:String){content.addView(txt(k.uppercase(Locale.getDefault()),10,ACCENT,true));content.addView(txt(t,28,FG,true));content.addView(txt(d,14,MUTED))}
  private fun section(s:String){content.addView(txt(s,19,FG,true),LinearLayout.LayoutParams(-1,-2).apply{topMargin=dp(20);bottomMargin=dp(10)})}
  private fun searchField(hintText:String)=EditText(this).apply{hint=hintText;setHintTextColor(MUTED);setTextColor(FG);textSize=14f;background=shape(0xFFF1F4F9.toInt(),12);setPadding(dp(14),dp(10),dp(14),dp(10))}
- private fun featureCard(emoji:String,title:String,sub:String,color:Int,click:()->Unit){val c=LinearLayout(this).apply{orientation=1;gravity=Gravity.CENTER_VERTICAL;background=shape(color,18);setPadding(dp(14),dp(14),dp(14),dp(14));setOnClickListener{click()}};c.addView(txt(emoji,25));c.addView(txt(title,14,FG,true));c.addView(txt(sub,11,MUTED));content.addView(c,LinearLayout.LayoutParams(0,dp(112),1f).apply{setMargins(dp(3),dp(3),dp(3),dp(3)})}
+ private fun featureCard(parent:LinearLayout,emoji:String,title:String,sub:String,color:Int,click:()->Unit){val c=LinearLayout(this).apply{orientation=1;gravity=Gravity.CENTER_VERTICAL;background=shape(color,18);setPadding(dp(14),dp(14),dp(14),dp(14));setOnClickListener{click()}};c.addView(txt(emoji,25));c.addView(txt(title,14,FG,true));c.addView(txt(sub,11,MUTED));parent.addView(c,LinearLayout.LayoutParams(0,dp(112),1f).apply{setMargins(dp(3),dp(3),dp(3),dp(3)})}
  private fun tile(t:String,d:String,click:(()->Unit)?=null){
   val c=MaterialCardView(this).apply{radius=dp(18).toFloat();cardElevation=dp(1).toFloat();setCardBackgroundColor(PANEL);strokeWidth=dp(1);strokeColor=BORDER;if(click!=null)setOnClickListener{click()}}
   val box=LinearLayout(this).apply{orientation=1;setPadding(dp(16),dp(13),dp(16),dp(11))}
@@ -96,12 +96,12 @@ class MainActivity:AppCompatActivity(){
   section("Plan your trip")
   val row1=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
   content.addView(row1)
-  featureCard("🏨","Stays","Hotels & more",0xFFEAF3FF.toInt()){show("Stay")}
-  featureCard("🍜","Food guide","Local favourites",0xFFFFF2E6.toInt()){food()}
+  featureCard(row1,"🏨","Stays","Hotels & more",0xFFEAF3FF.toInt()){show("Stay")}
+  featureCard(row1,"🍜","Food guide","Local favourites",0xFFFFF2E6.toInt()){food()}
   val row2=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
   content.addView(row2)
-  featureCard("💸","Trip budget","Know your costs",0xFFEAF8F0.toInt()){budget()}
-  featureCard("🌐","Translator","Offline language packs",0xFFF2EDFF.toInt()){translate()}
+  featureCard(row2,"💸","Trip budget","Know your costs",0xFFEAF8F0.toInt()){budget()}
+  featureCard(row2,"🌐","Translator","Offline language packs",0xFFF2EDFF.toInt()){translate()}
   section("Discover somewhere new")
   places.take(4).forEachIndexed{index,p->
    val colors=listOf(0xFFEAF3FF.toInt(),0xFFFFF2E6.toInt(),0xFFEAF8F0.toInt(),0xFFF2EDFF.toInt())
