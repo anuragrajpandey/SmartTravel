@@ -9,8 +9,9 @@ import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.widget.*
-import java.time.LocalDate
-import java.time.format.DateTimeFormatter
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.card.MaterialCardView
 import kotlin.concurrent.thread
@@ -117,19 +118,20 @@ class CityExplorerActivity:AppCompatActivity() {
         if(w==null) card("Weather unavailable","The weather service did not respond. Other city information is still available.")
         else {
             card("${w.temperature.toInt()}°C  ·  ${w.description}","Feels like ${w.feelsLike.toInt()}°C  ·  Humidity ${w.humidity}%  ·  Wind ${w.wind.toInt()} km/h")
-            val today=LocalDate.now()
+            val iso=SimpleDateFormat("yyyy-MM-dd",Locale.US)
+            val today=iso.format(Date())
             val rows=w.forecast.mapNotNull { raw ->
                 val p=raw.split("|")
-                if(p.size<6) null else runCatching { Pair(LocalDate.parse(p[0]),p) }.getOrNull()
+                if(p.size<6) null else Pair(p[0],p)
             }
-            val past=rows.filter{it.first.isBefore(today)}
-            val current=rows.filter{it.first.isEqual(today)}
-            val future=rows.filter{it.first.isAfter(today)}
-            fun weatherRows(label:String,items:List<Pair<LocalDate,List<String>>>) {
+            val past=rows.filter{it.first<today}
+            val current=rows.filter{it.first==today}
+            val future=rows.filter{it.first>today}
+            fun weatherRows(label:String,items:List<Pair<String,List<String>>>) {
                 if(items.isEmpty()) return
                 section(label)
                 items.forEach { (date,p) ->
-                    val day=date.format(DateTimeFormatter.ofPattern("EEE, dd MMM"))
+                    val day=runCatching { SimpleDateFormat("EEE, dd MMM",Locale.US).format(iso.parse(date)!!) }.getOrDefault(date)
                     val details=p[5]+"  ·  Rain "+p[3]+"% ("+p[4]+" mm)"
                     card(day,p[1]+"° to "+p[2]+"°  ·  "+details)
                 }
