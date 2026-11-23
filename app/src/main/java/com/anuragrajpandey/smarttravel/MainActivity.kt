@@ -147,20 +147,7 @@ class MainActivity:AppCompatActivity(){
   content.addView(txt("After download, supported language pairs translate without internet. Model availability varies.",12,MUTED))
  }
  private fun weather(){
-  content.removeAllViews();heading("LIVE WEATHER","Check the sky ahead.","Current conditions and 3-day forecast from Open-Meteo.")
-  val city=EditText(this).apply{hint="City";setText("Mathura");setTextColor(FG);setHintTextColor(MUTED);background=shape(0xFF22252A.toInt());setPadding(dp(12),dp(10),dp(12),dp(10))};content.addView(city)
-  val out=txt("Weather has not been loaded.",15,FG);content.addView(out)
-  content.addView(btn("Get live weather",true){
-   out.text="Loading…";thread{try{
-    val g=JSONObject(URL("https://geocoding-api.open-meteo.com/v1/search?name="+URLEncoder.encode(city.text.toString(),"UTF-8")+"&count=1&language=en&format=json").readText())
-    val loc=g.optJSONArray("results")?.optJSONObject(0)?:throw Exception()
-    val d=JSONObject(URL("https://api.open-meteo.com/v1/forecast?latitude="+loc.getDouble("latitude")+"&longitude="+loc.getDouble("longitude")+"&current=temperature_2m,relative_humidity_2m,apparent_temperature,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=3").readText())
-    val n=d.getJSONObject("current");val day=d.getJSONObject("daily")
-    val result=loc.getString("name")+"\n"+n.getDouble("temperature_2m")+"°C · Feels like "+n.getDouble("apparent_temperature")+"°C\nHumidity "+n.getInt("relative_humidity_2m")+"% · Wind "+n.getDouble("wind_speed_10m")+" km/h\n\nNext 3 days\n"+(0..2).joinToString("\n"){i->day.getJSONArray("time").getString(i)+" · "+day.getJSONArray("temperature_2m_min").getDouble(i)+"° / "+day.getJSONArray("temperature_2m_max").getDouble(i)+"°"}
-    runOnUiThread{out.text=result}
-   }catch(e:Exception){runOnUiThread{out.text="Could not load weather. Check the city and connection."}}}
-  },LinearLayout.LayoutParams(-1,dp(50)))
-  content.addView(txt("Weather data by Open-Meteo. Forecasts are estimates.",11,MUTED))
+  startActivity(android.content.Intent(this,CityExplorerActivity::class.java).putExtra("city_query","Mathura"))
  }
  private fun mapPreview(){
   content.removeAllViews();heading("MAP PREVIEW","Your route, at a glance.","Mock interface only. Live tiles, GPS and directions are not connected.")
