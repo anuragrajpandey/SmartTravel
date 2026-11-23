@@ -2,31 +2,37 @@
 
 FlipDoor is a native Android travel companion built with Kotlin and Android Views/Material Components.
 
-## Live city guide
+## City discovery
+- Search any city to load a live destination guide.
+- Current weather plus a 15-day weather calendar: seven previous days, today and seven upcoming days.
+- Nearby stays, restaurants, cafés, museums and attractions from OpenStreetMap.
+- City overview and food research links through Wikimedia.
+- Indicative daily budget tiers, clearly labelled as planning estimates rather than verified local averages.
 
-Search a city from the Explore screen to open the live City Guide. The guide loads:
-- City matching and coordinates through Open-Meteo Geocoding.
-- Current weather and a five-day forecast through Open-Meteo.
-- Nearby mapped stays, restaurants, cafés, museums and attractions through the OpenStreetMap Overpass API.
-- City overview and food research links through the Wikimedia REST search API.
-- Indicative daily travel-planning ranges. These are broad planning assumptions, not live prices or a verified city-specific average.
+## Weather calendar
+The Open-Meteo Forecast API is requested with `past_days=7` and `forecast_days=8`, giving seven previous calendar days plus today and seven days ahead. Past values from this endpoint are archived model forecasts/estimates, not guaranteed observations from a local weather station. Forecast values can change.
 
-The City Guide displays a circular loading spinner while the data is fetched. Individual data sources fail independently where possible, so a weather or places outage does not necessarily hide the rest of the guide.
+## Trip planner
+- Create a named trip and destination.
+- Select start and end dates with native date pickers.
+- Enter traveller count, accommodation per night, food per person/day, transport and activities.
+- Calculate trip total, per-traveller estimate and duration.
+- Save multiple trip plans locally on the device. No account or cloud sync is currently provided.
 
-## Existing features
-- Booking-style blue-led interface with colourful category cards.
-- Explore, Stay, Discover, Tools and Trips sections.
-- Local trip budget calculator and saved destinations.
+## Other features
+- Explore, Stay, Discover, Tools and Trips navigation.
+- Quick budget calculator.
 - Google ML Kit translation with downloadable language models for offline use after download.
-- Weather tool and mock map preview.
-- Android launcher icon generated from `assets/FlipDoor.png`.
+- Mock map preview; live map tiles, GPS and routing are not connected.
+- Launcher icon generated from `assets/FlipDoor.png`.
 
-## Data attribution and limitations
-- Weather: [Open-Meteo](https://open-meteo.com/), CC BY 4.0. Free API access is intended for non-commercial use; commercial use requires an appropriate plan.
-- Places: © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), ODbL. Listings depend on community map coverage; availability, ratings and prices are not verified.
-- Destination and food research: [Wikipedia/Wikimedia](https://www.mediawiki.org/wiki/Wikimedia_REST_API). Search results are references, not popularity rankings.
-- The public Overpass service can be busy or temporarily unavailable. A production launch should use a managed provider or a controlled backend/cache and support provider switching.
-- The app does not yet have hotel inventory/booking, ticketing, payments, user accounts, live navigation or a city-specific verified cost-of-living feed.
+## Data providers and limitations
+- Weather and geocoding: [Open-Meteo](https://open-meteo.com/).
+- Places: © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), ODbL. Listings depend on map coverage; prices, ratings and availability are not verified.
+- City and food research: [Wikipedia/Wikimedia](https://www.mediawiki.org/wiki/Wikimedia_REST_API). Results are references, not popularity rankings.
+- Public Overpass services can be busy. A production launch should use a managed provider or controlled backend/cache.
+- Live hotel inventory and reservations, transport tickets, payments, user accounts, cloud sync and turn-by-turn navigation are not implemented.
+- Check provider terms before commercial use. Open-Meteo's free access is intended for non-commercial use.
 
 ## Build
 GitHub Actions → **Build FlipDoor APK** → Run workflow → select `main`.
