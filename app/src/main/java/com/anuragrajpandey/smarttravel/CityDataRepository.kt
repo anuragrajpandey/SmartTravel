@@ -49,7 +49,7 @@ object CityDataRepository {
     }
 
     private fun loadWeather(city:CityLocation):WeatherSnapshot {
-        val url="https://api.open-meteo.com/v1/forecast?latitude=${city.latitude}&longitude=${city.longitude}&current=temperature_2m,relative_humidity_2m,apparent_temperature,wind_speed_10m,weather_code&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=5"
+        val url="https://api.open-meteo.com/v1/forecast?latitude=${city.latitude}&longitude=${city.longitude}&current=temperature_2m,relative_humidity_2m,apparent_temperature,wind_speed_10m,weather_code&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,weather_code&timezone=auto&past_days=7&forecast_days=8"
         val json=JSONObject(get(url))
         val current=json.getJSONObject("current")
         val daily=json.getJSONObject("daily")
@@ -58,7 +58,9 @@ object CityDataRepository {
             val low=daily.getJSONArray("temperature_2m_min").getDouble(i).toInt()
             val high=daily.getJSONArray("temperature_2m_max").getDouble(i).toInt()
             val rain=daily.optJSONArray("precipitation_probability_max")?.optInt(i) ?: 0
-            "$date  ·  $low°–$high°  ·  Rain $rain%"
+            val rainMm=daily.optJSONArray("precipitation_sum")?.optDouble(i) ?: 0.0
+            val code=daily.optJSONArray("weather_code")?.optInt(i) ?: -1
+            date+"|"+low+"|"+high+"|"+rain+"|"+rainMm+"|"+weatherLabel(code)
         }
         WeatherSnapshot(current.getDouble("temperature_2m"),current.getDouble("apparent_temperature"),current.getInt("relative_humidity_2m"),current.getDouble("wind_speed_10m"),weatherLabel(current.optInt("weather_code")),forecast)
     }
