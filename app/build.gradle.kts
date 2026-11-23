@@ -1,6 +1,5 @@
 plugins { id("com.android.application"); id("org.jetbrains.kotlin.android") }
 val generatedFlipDoorRes = layout.buildDirectory.dir("generated/flipdoorRes")
-sourceSets.getByName("main").res.srcDir(generatedFlipDoorRes)
 val prepareFlipDoorLauncherIcon by tasks.registering(Copy::class) {
  from(rootProject.file("assets/FlipDoor.png"))
  into(generatedFlipDoorRes.map { it.dir("mipmap-nodpi") })
@@ -9,6 +8,7 @@ val prepareFlipDoorLauncherIcon by tasks.registering(Copy::class) {
 tasks.named("preBuild").configure { dependsOn(prepareFlipDoorLauncherIcon) }
 
 android {
+ sourceSets.getByName("main").res.srcDir(generatedFlipDoorRes)
  namespace="com.anuragrajpandey.smarttravel"; compileSdk=35
  defaultConfig { applicationId="com.anuragrajpandey.smarttravel"; minSdk=24; targetSdk=35; versionCode=2; versionName="1.0.0" }
  buildTypes { release { isMinifyEnabled=false; proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"),"proguard-rules.pro") } }
