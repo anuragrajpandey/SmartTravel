@@ -9,6 +9,8 @@ import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.widget.*
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.card.MaterialCardView
 import kotlin.concurrent.thread
@@ -110,12 +112,32 @@ class CityExplorerActivity:AppCompatActivity() {
         val location=listOf(g.city.region,g.city.country).filter{it.isNotBlank()}.joinToString(" · ")
         card("✈  ${g.city.name}",location.ifBlank{"Destination guide"})
         g.overview?.let{card("About ${g.city.name}",it.excerpt.ifBlank{it.description}.ifBlank{"Read the destination overview online."});body.addView(button("Read destination guide"){open(it.url)})}
-        section("Weather","Live conditions and a five-day forecast")
+        section("Weather calendar","Seven days of recent weather and seven days ahead")
         val w=g.weather
         if(w==null) card("Weather unavailable","The weather service did not respond. Other city information is still available.")
         else {
             card("${w.temperature.toInt()}°C  ·  ${w.description}","Feels like ${w.feelsLike.toInt()}°C  ·  Humidity ${w.humidity}%  ·  Wind ${w.wind.toInt()} km/h")
-            w.forecast.forEach{card("Forecast",it)}
+            val today=LocalDate.now()
+            val rows=w.forecast.mapNotNull { raw ->
+                val p=raw.split("|")
+                if(p.size<6) null else runCatching { Pair(LocalDate.parse(p[0]),p) }.getOrNull()
+            }
+            val past=rows.filter{it.first.isBefore(today)}
+            val current=rows.filter{it.first.isEqual(today)}
+            val future=rows.filter{it.first.isAfter(today)}
+            fun weatherRows(label:String,items:List<Pair<LocalDate,List<String>>>) {
+                if(items.isEmpty()) return
+                section(label)
+                items.forEach { (date,p) ->
+                    val day=date.format(DateTimeFormatter.ofPattern("EEE, dd MMM"))
+                    val details=p[5]+"  ·  Rain "+p[3]+"% ("+p[4]+" mm)"
+                    card(day,p[1]+"° to "+p[2]+"°  ·  "+details)
+                }
+            }
+            weatherRows("Past 7 days",past)
+            weatherRows("Today",current)
+            weatherRows("Next 7 days",future)
+            card("Weather data","Past days are model-based historical estimates, not readings from a local weather station. Forecasts can change.")
         }
         section("Travel budget","Indicative planning ranges per person, per day. Not live prices or a verified city average.")
         card("Budget traveller","₹1,000–₹1,800 / day · basic stay, local food and public/local transport")
