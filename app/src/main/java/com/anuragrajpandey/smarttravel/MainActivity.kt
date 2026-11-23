@@ -65,7 +65,7 @@ class MainActivity:AppCompatActivity(){
   val nav=LinearLayout(this).apply{gravity=Gravity.CENTER;background=shape(Color.WHITE,18);elevation=dp(8).toFloat();setPadding(dp(5),dp(6),dp(5),dp(6))}
   listOf("Explore","Stay","Discover","Tools","Trips").forEach{n->
    val icon=when(n){"Explore"->"⌂";"Stay"->"▣";"Discover"->"✦";"Tools"->"⚒";else->"♡"}
-   val v=TextView(this).apply{text=icon+"\\n"+n;textSize=10f;gravity=Gravity.CENTER;setLineSpacing(0f,1f);setTextColor(if(n==tab)ACCENT else MUTED);background=shape(if(n==tab)0xFFEAF3FF.toInt() else Color.TRANSPARENT,13);setPadding(dp(5),dp(7),dp(5),dp(7));setOnClickListener{show(n)}}
+   val v=TextView(this).apply{text=icon+System.lineSeparator()+n;textSize=10f;gravity=Gravity.CENTER;setLineSpacing(0f,1f);setTextColor(if(n==tab)ACCENT else MUTED);background=shape(if(n==tab)0xFFEAF3FF.toInt() else Color.TRANSPARENT,13);setPadding(dp(5),dp(7),dp(5),dp(7));setOnClickListener{show(n)}}
    nav.addView(v,LinearLayout.LayoutParams(0,-2,1f))
   }
   root.addView(nav,LinearLayout.LayoutParams(-1,-2).apply{setMargins(dp(12),dp(5),dp(12),dp(9))});setContentView(root);root.alpha=0f;root.translationY=dp(8).toFloat();root.animate().alpha(1f).translationY(0f).setDuration(220).start()
