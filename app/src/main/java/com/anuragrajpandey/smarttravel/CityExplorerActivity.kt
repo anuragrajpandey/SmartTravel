@@ -287,6 +287,29 @@ class CityExplorerActivity : AppCompatActivity() {
             })
         }
 
+        if (g.hiddenGems.isNotEmpty()) {
+            section("💎 Hidden gems in ${g.city.name}", "Lesser-known viewpoints, nature & offbeat spots · Tap to explore")
+            val gemScroll = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
+            val gemRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            g.hiddenGems.forEachIndexed { idx, gem ->
+                gemRow.addView(
+                    HiddenGemCardsHelper.createCard(
+                        context = this,
+                        place = gem,
+                        index = idx,
+                        fullWidth = false,
+                        onPlaceClick = { openPlaceDetail(it) },
+                        onPlanClick = { openTripPlanner(it.name) }
+                    )
+                )
+            }
+            gemScroll.addView(gemRow)
+            body.addView(gemScroll, LinearLayout.LayoutParams(-1, -2).apply {
+                topMargin = dp(6)
+                bottomMargin = dp(6)
+            })
+        }
+
         g.overview?.let {
             card("About ${g.city.name}", it.excerpt.ifBlank { it.description }.ifBlank { "Read the destination overview online." })
             body.addView(button("Read destination guide") { open(it.url) })

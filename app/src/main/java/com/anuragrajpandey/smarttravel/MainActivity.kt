@@ -172,11 +172,11 @@ class MainActivity : AppCompatActivity() {
             elevation = dp(8).toFloat()
             setPadding(dp(5), dp(6), dp(5), dp(6))
         }
-        listOf("Explore", "Stay", "Discover", "Tools", "Trips").forEach { n ->
+        listOf("Explore", "Stay", "Gems", "Tools", "Trips").forEach { n ->
             val icon = when (n) {
                 "Explore" -> "⌂"
                 "Stay" -> "▣"
-                "Discover" -> "✦"
+                "Gems" -> "✦"
                 "Tools" -> "⚒"
                 else -> "♡"
             }
@@ -202,7 +202,7 @@ class MainActivity : AppCompatActivity() {
         when (tab) {
             "Explore" -> explore()
             "Stay" -> stay()
-            "Discover" -> discover()
+            "Gems" -> discover()
             "Tools" -> tools()
             else -> trips()
         }
@@ -273,7 +273,7 @@ class MainActivity : AppCompatActivity() {
         section("Explore by category")
         val categories = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
         val chips = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        listOf("🏨 Stays", "🍜 Food", "🏞 Places", "💸 Budget", "🌦 Weather").forEachIndexed { index, label ->
+        listOf("🏨 Stays", "🍜 Food", "💎 Hidden Gems", "💸 Budget", "🌦 Weather").forEachIndexed { index, label ->
             val v = TextView(this).apply {
                 text = label
                 textSize = 13f
@@ -284,7 +284,7 @@ class MainActivity : AppCompatActivity() {
                     when (index) {
                         0 -> show("Stay")
                         1 -> food()
-                        2 -> show("Discover")
+                        2 -> show("Gems")
                         3 -> budget()
                         else -> weather()
                     }
@@ -294,6 +294,9 @@ class MainActivity : AppCompatActivity() {
         }
         categories.addView(chips)
         content.addView(categories)
+
+        // Hidden gems preview across all places
+        addHiddenGemsPreviewSection()
 
         section("Plan your trip")
         val row1 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
@@ -498,6 +501,58 @@ class MainActivity : AppCompatActivity() {
         loadFeatured()
     }
 
+    private fun addHiddenGemsPreviewSection() {
+        val headerRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        val titleCol = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        titleCol.addView(txt("💎 Hidden gems", 19, FG, true).apply { setPadding(0, 0, 0, dp(1)) })
+        titleCol.addView(txt("Offbeat places across India & world · Tap to explore", 12, MUTED))
+        headerRow.addView(titleCol, LinearLayout.LayoutParams(0, -2, 1f))
+
+        val seeAllBtn = TextView(this).apply {
+            text = "All gems →"
+            textSize = 12.5f
+            setTextColor(ACCENT)
+            setTypeface(typeface, Typeface.BOLD)
+            background = shape(0xFFEAF3FF.toInt(), 14)
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            setOnClickListener { show("Gems") }
+        }
+        headerRow.addView(seeAllBtn, LinearLayout.LayoutParams(-2, -2))
+        content.addView(headerRow, LinearLayout.LayoutParams(-1, -2).apply {
+            topMargin = dp(20)
+            bottomMargin = dp(8)
+        })
+
+        val gemScroll = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
+        val gemRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        gemScroll.addView(gemRow)
+        content.addView(gemScroll, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(4) })
+
+        val gen = exploreGeneration
+        thread {
+            val gems = CityDataRepository.fetchAllHiddenGems()
+            runOnUiThread {
+                if (isFinishing || isDestroyed || gen != exploreGeneration) return@runOnUiThread
+                gemRow.removeAllViews()
+                gems.take(10).forEachIndexed { idx, gem ->
+                    gemRow.addView(
+                        HiddenGemCardsHelper.createCard(
+                            context = this@MainActivity,
+                            place = gem,
+                            index = idx,
+                            fullWidth = false,
+                            onPlaceClick = { openPlaceDetail(it) },
+                            onPlanClick = { openTripPlanner(it.name) }
+                        )
+                    )
+                }
+            }
+        }
+    }
+
     private fun stay() {
         heading("STAYS", "Find your kind of stay.", "Explore stay styles. Live booking availability is not connected.")
         listOf("Boutique hotels", "Hostels", "Homestays", "Resorts & retreats").forEach {
@@ -510,13 +565,136 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun discover() {
-        heading("DISCOVER", "Take the quieter road.", "Little-known places and slower experiences.")
-        places.filter { it.mood == "Hidden gem" || it.name == "Gokarna" }
-            .plus(Destination("Chopta", "Uttarakhand", "Mountain escape", "₹6k–₹11k", "Alpine meadows and the Tungnath trail."))
-            .plus(Destination("Majuli", "Assam", "River island", "₹8k–₹14k", "Satras, river landscapes and local crafts."))
-            .forEach { p ->
-                tile(p.name, p.region + " · " + p.budget + "\n" + p.detail) { destination(p) }
+        heading("HIDDEN GEMS", "Take the quieter road.", "Explore secret & offbeat places from all regions, or search any city.")
+        val gen = exploreGeneration
+
+        val loadingRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(4), 0, dp(8))
+        }
+        val spinner = ProgressBar(this, null, android.R.attr.progressBarStyleSmall)
+        val loadingText = txt("Loading hidden gems & photos…", 12, ACCENT, true)
+        loadingRow.addView(spinner, LinearLayout.LayoutParams(dp(18), dp(18)).apply { rightMargin = dp(8) })
+        loadingRow.addView(loadingText)
+        content.addView(loadingRow)
+
+        val regions = listOf("All", "Himalayas", "Northeast", "Coast", "Heritage", "Global", "🔎 Any city")
+        val chipViews = mutableListOf<TextView>()
+        val chipScroll = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
+        val chipRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val listContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+
+        var allCuratedGems: List<MostVisitedPlace> = emptyList()
+
+        fun selectChip(activeIdx: Int) {
+            chipViews.forEachIndexed { i, tv ->
+                val active = i == activeIdx
+                tv.setTextColor(if (active) Color.WHITE else FG)
+                tv.background = shape(if (active) ACCENT else Color.WHITE, 20)
             }
+        }
+
+        fun renderGemList(items: List<MostVisitedPlace>) {
+            listContainer.removeAllViews()
+            if (items.isEmpty()) {
+                tile("No hidden gems found", "Try another region filter or search a different city.")
+                return
+            }
+            items.forEachIndexed { idx, gem ->
+                listContainer.addView(
+                    HiddenGemCardsHelper.createCard(
+                        context = this@MainActivity,
+                        place = gem,
+                        index = idx,
+                        fullWidth = true,
+                        onPlaceClick = { openPlaceDetail(it) },
+                        onPlanClick = { openTripPlanner(it.name) }
+                    )
+                )
+            }
+        }
+
+        fun applyRegionFilter(region: String, idx: Int) {
+            selectChip(idx)
+            val filtered = if (region == "All") {
+                allCuratedGems
+            } else {
+                allCuratedGems.filter { it.category.contains(region, ignoreCase = true) }
+            }
+            renderGemList(filtered)
+        }
+
+        fun searchCityHiddenGems() {
+            val input = EditText(this).apply {
+                hint = "e.g. Jaipur, Manali, Paris, Goa"
+                setSingleLine(true)
+                setPadding(dp(16), dp(12), dp(16), dp(12))
+            }
+            AlertDialog.Builder(this)
+                .setTitle("Hidden gems in any city")
+                .setMessage("Enter any location to auto-fetch offbeat viewpoints, trails, ruins and secret local spots.")
+                .setView(input)
+                .setPositiveButton("Find gems") { _, _ ->
+                    val q = input.text.toString().trim()
+                    if (q.isBlank()) return@setPositiveButton
+                    selectChip(regions.lastIndex)
+                    loadingRow.visibility = View.VISIBLE
+                    loadingText.text = "Searching hidden gems around $q…"
+                    thread {
+                        try {
+                            val (city, gems) = CityDataRepository.fetchHiddenGemsForLocation(q)
+                            runOnUiThread {
+                                if (isFinishing || isDestroyed || gen != exploreGeneration) return@runOnUiThread
+                                loadingRow.visibility = View.GONE
+                                Toast.makeText(this@MainActivity, "Found ${gems.size} hidden gems in ${city.name}", Toast.LENGTH_SHORT).show()
+                                renderGemList(gems)
+                            }
+                        } catch (e: Exception) {
+                            runOnUiThread {
+                                if (isFinishing || isDestroyed || gen != exploreGeneration) return@runOnUiThread
+                                loadingRow.visibility = View.GONE
+                                Toast.makeText(this@MainActivity, e.message ?: "Location not found", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
+
+        regions.forEachIndexed { idx, label ->
+            val tv = TextView(this).apply {
+                text = label
+                textSize = 12.5f
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(if (idx == 0) Color.WHITE else FG)
+                background = shape(if (idx == 0) ACCENT else Color.WHITE, 20)
+                setPadding(dp(13), dp(8), dp(13), dp(8))
+                setOnClickListener {
+                    if (idx == regions.lastIndex) searchCityHiddenGems()
+                    else applyRegionFilter(label, idx)
+                }
+            }
+            chipViews.add(tv)
+            chipRow.addView(tv, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = dp(8) })
+        }
+        chipScroll.addView(chipRow)
+        content.addView(chipScroll, LinearLayout.LayoutParams(-1, -2).apply {
+            topMargin = dp(6)
+            bottomMargin = dp(12)
+        })
+        content.addView(listContainer)
+
+        thread {
+            val loaded = CityDataRepository.fetchAllHiddenGems()
+            runOnUiThread {
+                if (isFinishing || isDestroyed || gen != exploreGeneration) return@runOnUiThread
+                loadingRow.visibility = View.GONE
+                allCuratedGems = loaded
+                renderGemList(loaded)
+            }
+        }
     }
 
     private fun destination(p: Destination) {

@@ -340,3 +340,155 @@ class PlacesCarouselView(
 
     private fun dp(v: Int) = (v * context.resources.displayMetrics.density).toInt()
 }
+
+object HiddenGemCardsHelper {
+    private val blue = 0xFF006CE4.toInt()
+    private val gold = 0xFFFFB700.toInt()
+    private val ink = 0xFF172B4D.toInt()
+    private val muted = 0xFF718096.toInt()
+    private val border = 0xFFE5EAF2.toInt()
+    private val gemGradients = listOf(
+        intArrayOf(0xFF134E5E.toInt(), 0xFF71B280.toInt()),
+        intArrayOf(0xFF3A1C71.toInt(), 0xFFD76D77.toInt()),
+        intArrayOf(0xFF0F2027.toInt(), 0xFF2C5364.toInt()),
+        intArrayOf(0xFF283E51.toInt(), 0xFF4B79A1.toInt()),
+        intArrayOf(0xFF42275A.toInt(), 0xFF734B6D.toInt())
+    )
+
+    fun createCard(
+        context: Context,
+        place: MostVisitedPlace,
+        index: Int,
+        fullWidth: Boolean,
+        onPlaceClick: (MostVisitedPlace) -> Unit,
+        onPlanClick: (MostVisitedPlace) -> Unit
+    ): MaterialCardView {
+        fun dp(v: Int) = (v * context.resources.displayMetrics.density).toInt()
+
+        val card = MaterialCardView(context).apply {
+            radius = dp(18).toFloat()
+            cardElevation = dp(2).toFloat()
+            setCardBackgroundColor(Color.WHITE)
+            strokeWidth = dp(1)
+            strokeColor = border
+            setOnClickListener { onPlaceClick(place) }
+        }
+        val box = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+
+        // Photo banner
+        val banner = FrameLayout(context)
+        val bannerHeight = dp(if (fullWidth) 168 else 134)
+        val grad = GradientDrawable(GradientDrawable.Orientation.TL_BR, gemGradients[index % gemGradients.size])
+        banner.addView(View(context).apply { background = grad }, FrameLayout.LayoutParams(-1, -1))
+
+        val img = ImageView(context).apply { scaleType = ImageView.ScaleType.CENTER_CROP }
+        ImageLoader.load(place.imageUrl, img)
+        banner.addView(img, FrameLayout.LayoutParams(-1, -1))
+
+        val scrim = View(context).apply {
+            background = GradientDrawable(
+                GradientDrawable.Orientation.BOTTOM_TOP,
+                intArrayOf(0xB8091526.toInt(), 0x00091526)
+            )
+        }
+        banner.addView(scrim, FrameLayout.LayoutParams(-1, dp(72), Gravity.BOTTOM))
+
+        val badge = TextView(context).apply {
+            text = "💎 ${place.category.uppercase(Locale.getDefault())}"
+            textSize = 9.5f
+            setTextColor(Color.WHITE)
+            setTypeface(typeface, Typeface.BOLD)
+            background = GradientDrawable().apply {
+                setColor(0x88000000.toInt())
+                cornerRadius = dp(9).toFloat()
+            }
+            setPadding(dp(8), dp(4), dp(8), dp(4))
+        }
+        banner.addView(badge, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START).apply {
+            topMargin = dp(10)
+            leftMargin = dp(10)
+        })
+
+        val locOverlay = TextView(context).apply {
+            text = "📍 ${place.location}"
+            textSize = 11f
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            setTextColor(Color.WHITE)
+            setTypeface(typeface, Typeface.BOLD)
+        }
+        banner.addView(locOverlay, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM).apply {
+            leftMargin = dp(12)
+            rightMargin = dp(12)
+            bottomMargin = dp(8)
+        })
+        box.addView(banner, LinearLayout.LayoutParams(-1, bannerHeight))
+
+        // Text + actions
+        val info = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(13), dp(11), dp(13), dp(12))
+        }
+        val title = TextView(context).apply {
+            text = place.name
+            textSize = if (fullWidth) 17f else 15.5f
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            setTextColor(ink)
+            setTypeface(typeface, Typeface.BOLD)
+        }
+        val summary = TextView(context).apply {
+            text = place.summary
+            textSize = 12.5f
+            maxLines = if (fullWidth) 3 else 2
+            ellipsize = TextUtils.TruncateAt.END
+            setTextColor(muted)
+            setPadding(0, dp(3), 0, dp(9))
+        }
+        val actions = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        val exploreBtn = TextView(context).apply {
+            text = "Explore →"
+            textSize = 12f
+            setTextColor(blue)
+            setTypeface(typeface, Typeface.BOLD)
+            background = GradientDrawable().apply {
+                setColor(0xFFEAF3FF.toInt())
+                cornerRadius = dp(10).toFloat()
+            }
+            setPadding(dp(11), dp(7), dp(11), dp(7))
+            setOnClickListener { onPlaceClick(place) }
+        }
+        val planBtn = TextView(context).apply {
+            text = "✈ Plan"
+            textSize = 12f
+            setTextColor(ink)
+            setTypeface(typeface, Typeface.BOLD)
+            background = GradientDrawable().apply {
+                setColor(gold)
+                cornerRadius = dp(10).toFloat()
+            }
+            setPadding(dp(12), dp(7), dp(12), dp(7))
+            setOnClickListener { onPlanClick(place) }
+        }
+        actions.addView(exploreBtn, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = dp(8) })
+        actions.addView(planBtn, LinearLayout.LayoutParams(-2, -2))
+
+        info.addView(title)
+        info.addView(summary)
+        info.addView(actions)
+        box.addView(info)
+
+        card.addView(box)
+        card.layoutParams = if (fullWidth) {
+            LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(12) }
+        } else {
+            LinearLayout.LayoutParams(dp(236), -2).apply { rightMargin = dp(12) }
+        }
+        return card
+    }
+}

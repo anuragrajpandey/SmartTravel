@@ -35,7 +35,8 @@ data class CityGuide(
     val attractions: List<CityPlace>,
     val foods: List<WikiItem>,
     val mostVisited: List<MostVisitedPlace> = emptyList(),
-    val photos: List<String> = emptyList()
+    val photos: List<String> = emptyList(),
+    val hiddenGems: List<MostVisitedPlace> = emptyList()
 )
 
 object CityDataRepository {
@@ -57,6 +58,29 @@ object CityDataRepository {
         FeaturedSeed("Harmandir_Sahib", "Golden Temple", "Amritsar, Punjab", "Sacred Landmark", "Shimmering gold sanctum surrounded by the tranquil Amrit Sarovar.", "Amritsar"),
         FeaturedSeed("Leh", "Leh & Ladakh", "Ladakh", "Mountain Escape", "High-altitude monasteries, turquoise lakes and dramatic Himalayan passes.", "Leh"),
         FeaturedSeed("Varanasi", "Varanasi Ghats", "Uttar Pradesh", "Cultural Soul", "Ancient riverside steps, evening Ganga aarti and narrow heritage lanes.", "Varanasi")
+    )
+
+    private val hiddenGemSeeds = listOf(
+        FeaturedSeed("Ziro", "Ziro Valley", "Arunachal Pradesh", "Hidden Gem · Northeast", "Emerald pine hills, terraced rice fields and Apatani tribal heritage.", "Ziro"),
+        FeaturedSeed("Majuli", "Majuli Island", "Assam", "Hidden Gem · Northeast", "World's largest river island on the Brahmaputra, famed for satras and crafts.", "Jorhat"),
+        FeaturedSeed("Mawlynnong", "Mawlynnong", "Meghalaya", "Hidden Gem · Northeast", "Living root bridges, bamboo walkways and misty Khasi hills.", "Shillong"),
+        FeaturedSeed("Dzükou_Valley", "Dzükou Valley", "Nagaland & Manipur", "Hidden Gem · Northeast", "Rolling bamboo-green ridges and seasonal valley lilies above the clouds.", "Kohima"),
+        FeaturedSeed("Chopta", "Chopta Meadows", "Uttarakhand", "Hidden Gem · Himalayas", "Quiet alpine meadows and the scenic trek up to Tungnath temple.", "Chopta"),
+        FeaturedSeed("Spiti", "Spiti Valley", "Himachal Pradesh", "Hidden Gem · Himalayas", "High-altitude cold desert, cliffside monasteries and star-filled skies.", "Kaza"),
+        FeaturedSeed("Great_Himalayan_National_Park", "Tirthan Valley", "Himachal Pradesh", "Hidden Gem · Himalayas", "Glacial river banks, cedar forests and peaceful mountain hamlets.", "Banjar"),
+        FeaturedSeed("Gurez", "Gurez Valley", "Jammu & Kashmir", "Hidden Gem · Himalayas", "Untouched alpine valley along the Kishanganga river with wooden log homes.", "Gurez"),
+        FeaturedSeed("Gokarna,_Karnataka", "Gokarna", "Karnataka", "Hidden Gem · Coast", "Quiet crescent coves, cliffside beach trails and laid-back temple lanes.", "Gokarna"),
+        FeaturedSeed("Varkala", "Varkala Cliff", "Kerala", "Hidden Gem · Coast", "Dramatic red laterite cliffs overlooking the Arabian Sea and sunset cafés.", "Varkala"),
+        FeaturedSeed("Dhanushkodi", "Dhanushkodi", "Tamil Nadu", "Hidden Gem · Coast", "Surreal ghost-town ruins on a narrow sandspit where two seas meet.", "Rameswaram"),
+        FeaturedSeed("Shaheed_Dweep", "Neil Island", "Andaman & Nicobar", "Hidden Gem · Coast", "Coral reefs, natural rock bridges and uncrowded turquoise lagoons.", "Port Blair"),
+        FeaturedSeed("Bundi", "Bundi", "Rajasthan", "Hidden Gem · Heritage", "Blue-washed old lanes, ornate stepwells and a quiet hilltop palace.", "Bundi"),
+        FeaturedSeed("Orchha", "Orchha", "Madhya Pradesh", "Hidden Gem · Heritage", "Riverside cenotaphs, medieval palaces and calm Betwa river views.", "Orchha"),
+        FeaturedSeed("Gandikota", "Gandikota Canyon", "Andhra Pradesh", "Hidden Gem · Heritage", "Red gorge carved by the Pennar river with an ancient hilltop fort.", "Gandikota"),
+        FeaturedSeed("Chettinad", "Chettinad", "Tamil Nadu", "Hidden Gem · Heritage", "Palatial heritage mansions, hand-painted tiles and famed local cuisine.", "Karaikudi"),
+        FeaturedSeed("Hallstatt", "Hallstatt", "Austria", "Hidden Gem · Global", "Fairy-tale lakeside alpine village tucked beneath steep Dachstein peaks.", "Hallstatt"),
+        FeaturedSeed("Giethoorn", "Giethoorn", "Netherlands", "Hidden Gem · Global", "Car-free canal village of thatched cottages and wooden footbridges.", "Giethoorn"),
+        FeaturedSeed("Chefchaouen", "Chefchaouen", "Morocco", "Hidden Gem · Global", "Blue-painted mountain medina nestled in the Rif mountains.", "Chefchaouen"),
+        FeaturedSeed("Sintra", "Sintra", "Portugal", "Hidden Gem · Global", "Misty forested hills filled with pastel palaces and hidden gardens.", "Sintra")
     )
 
     private fun get(url: String): String {
@@ -137,6 +161,9 @@ object CityDataRepository {
         } else {
             buildFallbackMostVisited(city, attractions, photos)
         }
+        val hiddenGems = runCatching {
+            deriveCityHiddenGems(city, finalMostVisited, places, photos)
+        }.getOrDefault(emptyList())
 
         return CityGuide(
             city,
@@ -147,24 +174,25 @@ object CityDataRepository {
             attractions,
             foods,
             finalMostVisited,
-            photos
+            photos,
+            hiddenGems
         )
     }
 
-    fun fetchMostVisitedForLocation(query: String): Pair<CityLocation, List<MostVisitedPlace>> {
+    fun fetchFeaturedMostVisited(): List<MostVisitedPlace> = fetchWikiBatchBySeeds(featuredSeeds)
+
+    fun fetchAllHiddenGems(): List<MostVisitedPlace> = fetchWikiBatchBySeeds(hiddenGemSeeds)
+
+    fun fetchHiddenGemsForLocation(query: String): Pair<CityLocation, List<MostVisitedPlace>> {
         val city = geocodeCity(query)
-        val (places, photos) = loadMostVisitedAndPhotos(city)
-        val result = if (places.isNotEmpty()) {
-            places
-        } else {
-            val osmAttractions = runCatching { loadPlaces(city).filter { it.type == "Attraction" } }.getOrDefault(emptyList())
-            buildFallbackMostVisited(city, osmAttractions, photos)
-        }
-        return city to result
+        val (mostVisited, photos) = loadMostVisitedAndPhotos(city)
+        val osmPlaces = runCatching { loadPlaces(city) }.getOrDefault(emptyList())
+        val gems = deriveCityHiddenGems(city, mostVisited, osmPlaces, photos)
+        return city to gems
     }
 
-    fun fetchFeaturedMostVisited(): List<MostVisitedPlace> {
-        val defaults = featuredSeeds.map { seed ->
+    private fun fetchWikiBatchBySeeds(seeds: List<FeaturedSeed>): List<MostVisitedPlace> {
+        val defaults = seeds.map { seed ->
             MostVisitedPlace(
                 name = seed.displayName,
                 location = seed.location,
@@ -179,10 +207,10 @@ object CityDataRepository {
             )
         }
         return runCatching {
-            val titlesParam = featuredSeeds.joinToString("|") { it.wikiTitle.replace("_", " ") }
+            val titlesParam = seeds.joinToString("|") { it.wikiTitle.replace("_", " ") }
             val url = "https://en.wikipedia.org/w/api.php?action=query&titles=${enc(titlesParam)}" +
                 "&prop=pageimages%7Cextracts%7Cdescription%7Ccoordinates%7Cinfo" +
-                "&piprop=thumbnail&pithumbsize=900&pilimit=20&exintro=1&explaintext=1&exsentences=2&exlimit=20&colimit=20&inprop=url&redirects=1&format=json&formatversion=2"
+                "&piprop=thumbnail&pithumbsize=900&pilimit=30&exintro=1&explaintext=1&exsentences=2&exlimit=20&colimit=30&inprop=url&redirects=1&format=json&formatversion=2"
             val root = JSONObject(get(url))
             val queryObj = root.optJSONObject("query") ?: return@runCatching defaults
             val redirectMap = mutableMapOf<String, String>()
@@ -207,7 +235,7 @@ object CityDataRepository {
                 }
             }
 
-            featuredSeeds.mapIndexed { idx, seed ->
+            seeds.mapIndexed { idx, seed ->
                 val raw = seed.wikiTitle.replace("_", " ")
                 val norm = normalizedMap[raw] ?: raw
                 val finalTitle = redirectMap[norm] ?: norm
@@ -228,6 +256,84 @@ object CityDataRepository {
                 )
             }
         }.getOrDefault(defaults)
+    }
+
+    private fun deriveCityHiddenGems(
+        city: CityLocation,
+        mostVisited: List<MostVisitedPlace>,
+        osmPlaces: List<CityPlace>,
+        cityPhotos: List<String>
+    ): List<MostVisitedPlace> {
+        val locationLabel = listOf(city.region, city.country).filter { it.isNotBlank() }.joinToString(", ").ifBlank { city.name }
+        val existingNames = mostVisited.map { it.name.lowercase(Locale.US).trim() }.toMutableSet()
+        existingNames.add(city.name.lowercase(Locale.US).trim())
+
+        val offbeatQuery = "${city.name} ${city.country} hidden gems offbeat viewpoints waterfalls caves villages".trim()
+        val offbeatUrl = "https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${enc(offbeatQuery)}&gsrlimit=15" +
+            "&prop=pageimages%7Cextracts%7Cdescription%7Ccoordinates%7Cinfo" +
+            "&piprop=thumbnail&pithumbsize=900&pilimit=15&exintro=1&explaintext=1&exsentences=3&exlimit=15&colimit=15&inprop=url&format=json&formatversion=2"
+        val geoExtraUrl = "https://en.wikipedia.org/w/api.php?action=query&generator=geosearch" +
+            "&ggscoord=${city.latitude}%7C${city.longitude}&ggsradius=10000&ggslimit=40" +
+            "&prop=pageimages%7Cextracts%7Cdescription%7Ccoordinates%7Cinfo" +
+            "&piprop=thumbnail&pithumbsize=900&pilimit=40&exintro=1&explaintext=1&exsentences=2&exlimit=20&colimit=40&inprop=url&format=json&formatversion=2"
+
+        val candidates = mutableListOf<MostVisitedPlace>()
+        runCatching { parseWikiPlacePages(JSONObject(get(offbeatUrl)), locationLabel, city.name) }
+            .getOrDefault(emptyList())
+            .forEach { candidates.add(it) }
+        runCatching { parseWikiPlacePages(JSONObject(get(geoExtraUrl)), locationLabel, city.name) }
+            .getOrDefault(emptyList())
+            .forEach { candidates.add(it) }
+
+        val deduped = LinkedHashMap<String, MostVisitedPlace>()
+        for (item in candidates) {
+            val key = item.name.lowercase(Locale.US).trim()
+            if (key in existingNames) continue
+            val prev = deduped[key]
+            if (prev == null || (prev.imageUrl == null && item.imageUrl != null)) {
+                deduped[key] = item.copy(category = "Hidden Gem · ${item.category}")
+            }
+        }
+
+        // Add offbeat OSM attractions not already covered
+        val offbeatOsm = osmPlaces.filter { it.type == "Attraction" || it.type == "Hidden Gem" }
+        for (attr in offbeatOsm) {
+            val key = attr.name.lowercase(Locale.US).trim()
+            if (key in existingNames || deduped.containsKey(key)) continue
+            deduped[key] = MostVisitedPlace(
+                name = attr.name,
+                location = locationLabel,
+                category = "Hidden Gem · Local Spot",
+                summary = attr.detail,
+                imageUrl = null,
+                galleryUrls = emptyList(),
+                wikiUrl = attr.website,
+                latitude = attr.latitude,
+                longitude = attr.longitude,
+                cityQuery = city.name
+            )
+        }
+
+        val ranked = deduped.values
+            .sortedByDescending { (if (it.imageUrl != null) 100 else 0) + (if (it.summary.length > 40) 20 else 0) }
+            .take(8)
+            .mapIndexed { idx, p ->
+                val img = p.imageUrl ?: cityPhotos.getOrNull(idx % maxOf(cityPhotos.size, 1))
+                p.copy(imageUrl = img, galleryUrls = (listOfNotNull(img) + cityPhotos.take(4)).distinct())
+            }
+        return ranked
+    }
+
+    fun fetchMostVisitedForLocation(query: String): Pair<CityLocation, List<MostVisitedPlace>> {
+        val city = geocodeCity(query)
+        val (places, photos) = loadMostVisitedAndPhotos(city)
+        val result = if (places.isNotEmpty()) {
+            places
+        } else {
+            val osmAttractions = runCatching { loadPlaces(city).filter { it.type == "Attraction" } }.getOrDefault(emptyList())
+            buildFallbackMostVisited(city, osmAttractions, photos)
+        }
+        return city to result
     }
 
     fun fetchPlaceGallery(placeName: String, locationHint: String): List<String> {
@@ -515,8 +621,9 @@ object CityDataRepository {
         val query = "[out:json][timeout:25];(" +
             "nwr[\"tourism\"~\"hotel|hostel|guest_house\"](around:12000,$lat,$lon);" +
             "nwr[\"amenity\"~\"restaurant|cafe\"](around:12000,$lat,$lon);" +
-            "nwr[\"tourism\"~\"attraction|museum|viewpoint|theme_park|zoo\"](around:12000,$lat,$lon);" +
-            "nwr[\"historic\"~\"monument|fort|palace|castle|memorial\"](around:12000,$lat,$lon);" +
+            "nwr[\"tourism\"~\"attraction|museum|viewpoint|theme_park|zoo|camp_site\"](around:12000,$lat,$lon);" +
+            "nwr[\"historic\"~\"monument|fort|palace|castle|memorial|ruins|archaeological_site\"](around:12000,$lat,$lon);" +
+            "nwr[\"natural\"~\"waterfall|peak|cave_entrance|spring|beach\"](around:12000,$lat,$lon);" +
             ");out center;"
         val connection = URL("https://overpass-api.de/api/interpreter").openConnection() as HttpURLConnection
         connection.requestMethod = "POST"
@@ -540,10 +647,12 @@ object CityDataRepository {
                 val tourism = tags.optString("tourism")
                 val amenity = tags.optString("amenity")
                 val historic = tags.optString("historic")
+                val naturalTag = tags.optString("natural")
                 val type = when {
                     tourism in listOf("hotel", "hostel", "guest_house") -> "Stay"
                     amenity in listOf("restaurant", "cafe") -> "Food & drink"
-                    tourism in listOf("attraction", "museum", "viewpoint", "theme_park", "zoo") || historic.isNotBlank() -> "Attraction"
+                    tourism in listOf("viewpoint", "camp_site") || historic in listOf("ruins", "archaeological_site") || naturalTag.isNotBlank() -> "Hidden Gem"
+                    tourism in listOf("attraction", "museum", "theme_park", "zoo") || historic.isNotBlank() -> "Attraction"
                     else -> return@mapNotNull null
                 }
                 val center = e.optJSONObject("center")
