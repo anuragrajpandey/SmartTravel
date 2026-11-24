@@ -61,8 +61,10 @@ class TripPlannerActivity:AppCompatActivity() {
         content.addView(label("Build your next getaway.",27,ink,true))
         content.addView(label("Plan dates, travellers and a realistic trip budget in one place.",14,muted))
         section("Trip details")
-        tripName=field("Trip name, e.g. Family holiday");addField("Name your trip",tripName)
-        destination=field("Where are you going?");addField("Destination",destination)
+        val initialDestination=intent.getStringExtra("destination").orEmpty()
+        val initialTripName=intent.getStringExtra("trip_name").orEmpty()
+        tripName=field("Trip name, e.g. Family holiday").apply{if(initialTripName.isNotBlank())setText(initialTripName)};addField("Name your trip",tripName)
+        destination=field("Where are you going?").apply{if(initialDestination.isNotBlank())setText(initialDestination)};addField("Destination",destination)
         travellers=field("Number of travellers",true).apply{setText("2")};addField("Travellers",travellers)
         section("Travel dates")
         startButton=button(dateLabel(start),false){pickDate(true)}
