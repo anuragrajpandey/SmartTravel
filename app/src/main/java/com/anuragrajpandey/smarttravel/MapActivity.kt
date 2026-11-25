@@ -32,9 +32,9 @@ class MapActivity : AppCompatActivity() {
             <body><div id="map"></div><script>
             const map=L.map('map').setView([${lat},${lon}],14);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(map);
-            L.marker([${lat},${lon}]).addTo(map).bindPopup(${orgJsonQuotePlaceholder}).openPopup();
+            L.marker([${lat},${lon}]).addTo(map).bindPopup(${org.json.JSONObject.quote(title)}).openPopup();
             </script></body></html>
-        """.trimIndent().replace("${orgJsonQuotePlaceholder}", orgJsonQuotePlaceholder())
+        """.trimIndent()
         map.loadDataWithBaseURL("https://localhost/", html, "text/html", "UTF-8", null)
         root.addView(map, FrameLayout.LayoutParams(-1, -1))
         val close = TextView(this).apply {
