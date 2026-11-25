@@ -74,6 +74,7 @@ class PlaceDetailActivity : AppCompatActivity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(bg)
+            fitsSystemWindows = true
         }
 
         // Top navigation bar
@@ -249,7 +250,7 @@ class PlaceDetailActivity : AppCompatActivity() {
                 background = shape(0xFFEAF3FF.toInt(), 12)
                 setPadding(dp(12), dp(12), dp(12), dp(12))
                 setOnClickListener {
-                    openUrl("https://www.openstreetmap.org/?mlat=${place.latitude}&mlon=${place.longitude}#map=15/${place.latitude}/${place.longitude}")
+                    startActivity(Intent(this@PlaceDetailActivity, MapActivity::class.java).putExtra("lat", place.latitude!!).putExtra("lon", place.longitude!!).putExtra("title", place.name))
                 }
             }
             linksRow.addView(mapBtn, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(6) })
