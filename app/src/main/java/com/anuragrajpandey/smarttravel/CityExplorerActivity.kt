@@ -63,6 +63,7 @@ class CityExplorerActivity : AppCompatActivity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(bg)
+            fitsSystemWindows = true
         }
         val top = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -312,7 +313,7 @@ class CityExplorerActivity : AppCompatActivity() {
 
         g.overview?.let {
             card("About ${g.city.name}", it.excerpt.ifBlank { it.description }.ifBlank { "Read the destination overview online." })
-            body.addView(button("Read destination guide") { open(it.url) })
+            body.addView(button("More about ${g.city.name}") { showPlaceInformation(it.title) })
         }
 
         section("Weather calendar", "Seven days of recent weather and seven days ahead")
@@ -367,7 +368,7 @@ class CityExplorerActivity : AppCompatActivity() {
         if (g.foods.isEmpty()) card("No food articles found", "Try searching the city name with a regional cuisine term.")
         g.foods.forEach { item ->
             card(item.title, item.description.ifBlank { item.excerpt })
-            body.addView(button("Read about ${item.title}") { open(item.url) })
+            body.addView(button("Read about ${item.title}") { showPlaceInformation(item.title) })
         }
         card("Data & attribution", "Weather: Open-Meteo. Places: © OpenStreetMap contributors (ODbL). Destination photos & guides: Wikipedia / Wikimedia Commons contributors (CC BY-SA). Check details before travelling.")
     }
@@ -385,8 +386,8 @@ class CityExplorerActivity : AppCompatActivity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        actions.addView(button("Directions") {
-            open("https://www.openstreetmap.org/?mlat=${place.latitude}&mlon=${place.longitude}#map=17/${place.latitude}/${place.longitude}")
+        actions.addView(button("View on map") {
+            startActivity(Intent(this, MapActivity::class.java).putExtra("lat", place.latitude).putExtra("lon", place.longitude).putExtra("title", place.name))
         })
         if (place.website != null) {
             actions.addView(button("Website") { open(place.website) }.apply {
@@ -395,6 +396,26 @@ class CityExplorerActivity : AppCompatActivity() {
         }
         box.addView(actions)
         body.addView(box, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(9) })
+    }
+
+
+    private fun showPlaceInformation(title: String) {
+        val dialog = androidx.appcompat.app.AlertDialog.Builder(this).setTitle(title)
+            .setMessage("Loading detailed information…").setPositiveButton("Close", null).create()
+        dialog.show()
+        thread {
+            val details = runCatching {
+                val safeTitle = java.net.URLEncoder.encode(title.replace(" ", "_"), "UTF-8")
+                val connection = java.net.URL("https://en.wikipedia.org/api/rest_v1/page/summary/$safeTitle").openConnection() as java.net.HttpURLConnection
+                connection.setRequestProperty("User-Agent", "FlipDoor/1.0 (Android travel app)")
+                connection.connectTimeout = 10000
+                connection.readTimeout = 12000
+                val json = org.json.JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+                listOf(json.optString("description"), json.optString("extract")).filter { it.isNotBlank() }.joinToString("\n\n")
+                    .ifBlank { "No extended description is available for this place." }
+            }.getOrElse { "Detailed information is temporarily unavailable. Please try again later." }
+            runOnUiThread { if (!isFinishing && dialog.isShowing) dialog.setMessage(details) }
+        }
     }
 
     private fun open(url: String) {
