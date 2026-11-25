@@ -5,6 +5,12 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.Manifest
+import android.content.pm.PackageManager
+import android.location.Location
+import android.location.LocationManager
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import android.view.Gravity
 import android.view.View
 import android.view.inputmethod.EditorInfo
@@ -67,6 +73,7 @@ class MainActivity : AppCompatActivity() {
         window.statusBarColor = BG
         window.navigationBarColor = Color.WHITE
         show("Explore")
+        requestNearbyLocation()
     }
 
     override fun onDestroy() {
@@ -157,6 +164,7 @@ class MainActivity : AppCompatActivity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(BG)
+            fitsSystemWindows = true
         }
         val scroll = NestedScrollView(this)
         content = LinearLayout(this).apply {
@@ -182,7 +190,8 @@ class MainActivity : AppCompatActivity() {
             }
             val v = TextView(this).apply {
                 text = icon + System.lineSeparator() + n
-                textSize = 10f
+                textSize = 13f
+                minHeight = dp(58)
                 gravity = Gravity.CENTER
                 setLineSpacing(0f, 1f)
                 setTextColor(if (n == tab) ACCENT else MUTED)
@@ -206,6 +215,36 @@ class MainActivity : AppCompatActivity() {
             "Tools" -> tools()
             else -> trips()
         }
+    }
+
+
+    private fun requestNearbyLocation() {
+        val fine = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+        val coarse = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION)
+        if (fine != PackageManager.PERMISSION_GRANTED && coarse != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION), 410)
+        } else loadNearbyFromDevice()
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 410 && grantResults.any { it == PackageManager.PERMISSION_GRANTED }) loadNearbyFromDevice()
+    }
+
+    private fun loadNearbyFromDevice() {
+        val manager = getSystemService(LOCATION_SERVICE) as LocationManager
+        val location: Location? = runCatching {
+            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
+                ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) return
+            manager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER) ?: manager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+        }.getOrNull()
+        if (location != null) {
+            val geocoder = android.location.Geocoder(this, Locale.getDefault())
+            Thread {
+                val city = runCatching { geocoder.getFromLocation(location.latitude, location.longitude, 1)?.firstOrNull()?.locality }.getOrNull()
+                runOnUiThread { if (!city.isNullOrBlank()) openCityGuide(city) }
+            }.start()
+        } else Toast.makeText(this, "Location permission is enabled. Search a destination or retry once GPS has a fix.", Toast.LENGTH_LONG).show()
     }
 
     private fun openCityGuide(cityQuery: String) {
@@ -343,7 +382,7 @@ class MainActivity : AppCompatActivity() {
 
         section("Travel essentials")
         tile("Live weather", "Check current conditions and a 3-day forecast") { weather() }
-        tile("Map preview", "A route preview today, live maps integration later") { mapPreview() }
+        tile("Explore map", "View places on an interactive map without leaving FlipDoor") { startActivity(Intent(this, MapActivity::class.java)) }
     }
 
     private fun addMostVisitedSection(heroInput: EditText) {
