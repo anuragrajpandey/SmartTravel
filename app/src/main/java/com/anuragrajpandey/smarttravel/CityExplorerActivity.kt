@@ -45,6 +45,15 @@ class CityExplorerActivity : AppCompatActivity() {
         if (initial.isNotBlank()) search(initial)
     }
 
+    private fun weatherSymbol(label: String): String = when {
+        label.contains("thunder", true) -> "⛈"
+        label.contains("rain", true) || label.contains("drizzle", true) -> "🌧"
+        label.contains("snow", true) -> "❄"
+        label.contains("fog", true) -> "🌫"
+        label.contains("cloud", true) -> "☁"
+        else -> "☀"
+    }
+
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
     private fun panel(color: Int = Color.WHITE, r: Int = 18) = GradientDrawable().apply {
         setColor(color)
@@ -316,34 +325,44 @@ class CityExplorerActivity : AppCompatActivity() {
             body.addView(button("More about ${g.city.name}") { showPlaceInformation(it.title) })
         }
 
-        section("Weather calendar", "Seven days of recent weather and seven days ahead")
+        section("Weather", "Live conditions and a 7-day outlook")
         val w = g.weather
         if (w == null) {
             card("Weather unavailable", "The weather service did not respond. Other city information is still available.")
         } else {
-            card("${w.temperature.toInt()}°C  ·  ${w.description}", "Feels like ${w.feelsLike.toInt()}°C  ·  Humidity ${w.humidity}%  ·  Wind ${w.wind.toInt()} km/h")
+            val weatherHero = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(0xFF163B70.toInt(), 0xFF287BC1.toInt())).apply { cornerRadius = dp(22).toFloat() }
+                setPadding(dp(19), dp(18), dp(19), dp(18))
+            }
+            weatherHero.addView(text(g.city.name.uppercase(Locale.getDefault()), 11, 0xFFD7EAFE.toInt(), true))
+            weatherHero.addView(text("${w.temperature.toInt()}°", 52, Color.WHITE, true))
+            weatherHero.addView(text(w.description, 19, Color.WHITE, true))
+            weatherHero.addView(text("Feels like ${w.feelsLike.toInt()}°  ·  H ${w.humidity}%  ·  Wind ${w.wind.toInt()} km/h", 13, 0xFFE5F2FF.toInt()))
+            body.addView(weatherHero, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) })
             val iso = SimpleDateFormat("yyyy-MM-dd", Locale.US)
             val today = iso.format(Date())
-            val rows = w.forecast.mapNotNull { raw ->
-                val p = raw.split("|")
-                if (p.size < 6) null else Pair(p[0], p)
-            }
-            val past = rows.filter { it.first < today }
-            val current = rows.filter { it.first == today }
-            val future = rows.filter { it.first > today }
-            fun weatherRows(label: String, items: List<Pair<String, List<String>>>) {
-                if (items.isEmpty()) return
-                section(label)
-                items.forEach { (date, p) ->
-                    val day = runCatching { SimpleDateFormat("EEE, dd MMM", Locale.US).format(iso.parse(date)!!) }.getOrDefault(date)
-                    val details = p[5] + "  ·  Rain " + p[3] + "% (" + p[4] + " mm)"
-                    card(day, p[1] + "° to " + p[2] + "°  ·  " + details)
+            val rows = w.forecast.mapNotNull { raw -> raw.split("|").takeIf { it.size >= 6 } }
+            val forecastScroll = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
+            val forecastRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            rows.filter { it[0] >= today }.forEach { p ->
+                val day = runCatching { if (p[0] == today) "Today" else SimpleDateFormat("EEE", Locale.US).format(iso.parse(p[0])!!) }.getOrDefault(p[0])
+                val item = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    gravity = Gravity.CENTER
+                    background = panel(Color.WHITE, 15)
+                    setPadding(dp(13), dp(12), dp(13), dp(12))
                 }
+                item.addView(text(day, 12, muted, true))
+                item.addView(text(weatherSymbol(p[5]), 23))
+                item.addView(text("${p[2]}°", 17, ink, true))
+                item.addView(text("${p[1]}°", 13, muted))
+                item.addView(text("☂ ${p[3]}%", 11, blue))
+                forecastRow.addView(item, LinearLayout.LayoutParams(dp(82), dp(120)).apply { rightMargin = dp(8) })
             }
-            weatherRows("Past 7 days", past)
-            weatherRows("Today", current)
-            weatherRows("Next 7 days", future)
-            card("Weather data", "Past days are model-based historical estimates, not readings from a local weather station. Forecasts can change.")
+            forecastScroll.addView(forecastRow)
+            body.addView(forecastScroll, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
+            card("Weather details", "Rainfall, temperature and wind are sourced from Open-Meteo. Past 7-day values are model-based historical estimates, not verified station observations.")
         }
 
         section("Travel budget", "Indicative planning ranges per person, per day. Not live prices or a verified city average.")
