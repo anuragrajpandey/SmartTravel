@@ -45,18 +45,18 @@ class TripPlannerActivity:AppCompatActivity() {
         text=textValue;gravity=Gravity.CENTER;textSize=14f;setTypeface(typeface,Typeface.BOLD);setTextColor(if(primary)Color.WHITE else blue)
         background=shape(if(primary)blue else 0xFFEAF3FF.toInt(),13);setPadding(dp(12),dp(13),dp(12),dp(13));setOnClickListener{action()}
     }
-    override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);window.statusBarColor=bg;window.navigationBarColor=Color.WHITE;build()}
+    override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);build()}
     private fun build(){
         val root=LinearLayout(this).apply{orientation=1;setBackgroundColor(bg)}
         val top=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL;setPadding(dp(16),dp(12),dp(16),dp(8))}
-        top.addView(label("‹",34),LinearLayout.LayoutParams(dp(40),dp(44)).apply{})
-        top.getChildAt(0).setOnClickListener{finish()}
+        top.addView(Ui.iconButton(this,R.drawable.ic_arrow_back,ink){finish()})
         top.addView(label("Trip planner",20,ink,true))
         root.addView(top)
         val scroll=ScrollView(this)
         content=LinearLayout(this).apply{orientation=1;setPadding(dp(17),dp(8),dp(17),dp(26))}
         scroll.addView(content);root.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
         setContentView(root)
+        Ui.edgeToEdge(this,root)
         content.addView(label("PLAN A TRIP",10,blue,true))
         content.addView(label("Build your next getaway.",27,ink,true))
         content.addView(label("Plan dates, travellers and a realistic trip budget in one place.",14,muted))

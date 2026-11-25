@@ -37,12 +37,17 @@ class CityExplorerActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.statusBarColor = bg
-        window.navigationBarColor = Color.WHITE
         buildScreen()
         val initial = intent.getStringExtra("city_query").orEmpty()
         query.setText(initial)
-        if (initial.isNotBlank()) search(initial)
+        if (intent.hasExtra("lat") && intent.hasExtra("lon")) {
+            // Opened from "Areas near you": use the exact coordinates instead of re-geocoding the name.
+            val preset = CityLocation(
+                initial.ifBlank { "This area" }, intent.getStringExtra("region").orEmpty(),
+                intent.getStringExtra("country").orEmpty(), intent.getDoubleExtra("lat", 0.0), intent.getDoubleExtra("lon", 0.0)
+            )
+            search(initial, preset)
+        } else if (initial.isNotBlank()) search(initial)
     }
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
@@ -64,21 +69,7 @@ class CityExplorerActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(bg)
         }
-        val top = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(16), dp(12), dp(16), dp(8))
-        }
-        val back = TextView(this).apply {
-            text = "‹"
-            textSize = 34f
-            setTextColor(ink)
-            gravity = Gravity.CENTER
-            setOnClickListener { finish() }
-        }
-        top.addView(back, LinearLayout.LayoutParams(dp(42), dp(44)))
-        top.addView(text("City guide", 20, ink, true), LinearLayout.LayoutParams(0, -2, 1f))
-        root.addView(top)
+        root.addView(Ui.topBar(this, "Area guide"))
 
         val searchPanel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -104,16 +95,7 @@ class CityExplorerActivity : AppCompatActivity() {
             }
         }
         searchPanel.addView(query, LinearLayout.LayoutParams(-1, dp(50)))
-        val go = TextView(this).apply {
-            text = "Explore destination & photos"
-            gravity = Gravity.CENTER
-            textSize = 14f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(Color.WHITE)
-            background = panel(blue, 12)
-            setPadding(0, dp(13), 0, dp(13))
-            setOnClickListener { search(query.text.toString()) }
-        }
+        val go = Ui.button(this, "Explore destination & photos", R.drawable.ic_search, Color.WHITE, blue, 12) { search(query.text.toString()) }
         searchPanel.addView(go, LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(9) })
         root.addView(searchPanel, LinearLayout.LayoutParams(-1, -2).apply {
             setMargins(dp(16), dp(5), dp(16), dp(8))
@@ -140,11 +122,12 @@ class CityExplorerActivity : AppCompatActivity() {
         scroll.addView(body)
         root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
+        Ui.edgeToEdge(this, root)
     }
 
-    private fun search(value: String) {
+    private fun search(value: String, preset: CityLocation? = null) {
         val city = value.trim()
-        if (city.isBlank()) {
+        if (city.isBlank() && preset == null) {
             query.error = "Enter a city name"
             return
         }
@@ -155,7 +138,7 @@ class CityExplorerActivity : AppCompatActivity() {
         body.addView(text("Please wait while FlipDoor loads photos, landmarks, weather, stays and local food.", 14, muted))
         thread {
             try {
-                val guide = CityDataRepository.searchCity(city)
+                val guide = if (preset != null) CityDataRepository.searchCity(preset) else CityDataRepository.searchCity(city)
                 runOnUiThread {
                     if (isFinishing || isDestroyed || gen != searchGeneration) return@runOnUiThread
                     progress.visibility = View.GONE
@@ -169,7 +152,7 @@ class CityExplorerActivity : AppCompatActivity() {
                     status.text = "We couldn't load this location."
                     body.removeAllViews()
                     card("Search error", e.message ?: "Please check your connection and try again.")
-                    body.addView(button("Try again") { search(city) })
+                    body.addView(button("Try again") { search(city, preset) })
                 }
             }
         }
@@ -220,18 +203,9 @@ class CityExplorerActivity : AppCompatActivity() {
     private fun render(g: CityGuide) {
         body.removeAllViews()
         val location = listOf(g.city.region, g.city.country).filter { it.isNotBlank() }.joinToString(" · ")
-        card("✈  ${g.city.name}", location.ifBlank { "Destination guide" })
+        card(g.city.name, location.ifBlank { "Destination guide" })
 
-        val planCityBtn = TextView(this).apply {
-            text = "✈  Plan a trip to ${g.city.name}"
-            gravity = Gravity.CENTER
-            textSize = 14f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(ink)
-            background = panel(gold, 12)
-            setPadding(dp(14), dp(13), dp(14), dp(13))
-            setOnClickListener { openTripPlanner(g.city.name) }
-        }
+        val planCityBtn = Ui.button(this, "Plan a trip to ${g.city.name}", R.drawable.ic_flight, ink, gold, 12) { openTripPlanner(g.city.name) }
         body.addView(planCityBtn, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) })
 
         if (g.mostVisited.isNotEmpty()) {
@@ -288,7 +262,7 @@ class CityExplorerActivity : AppCompatActivity() {
         }
 
         if (g.hiddenGems.isNotEmpty()) {
-            section("💎 Hidden gems in ${g.city.name}", "Lesser-known viewpoints, nature & offbeat spots · Tap to explore")
+            section("Hidden gems in ${g.city.name}", "Lesser-known viewpoints, nature & offbeat spots · Tap to explore")
             val gemScroll = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
             val gemRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
             g.hiddenGems.forEachIndexed { idx, gem ->
@@ -312,38 +286,32 @@ class CityExplorerActivity : AppCompatActivity() {
 
         g.overview?.let {
             card("About ${g.city.name}", it.excerpt.ifBlank { it.description }.ifBlank { "Read the destination overview online." })
-            body.addView(button("Read destination guide") { open(it.url) })
+            body.addView(Ui.button(this, "Full details about ${g.city.name}", R.drawable.ic_explore, blue, 0xFFEAF3FF.toInt(), 12) {
+                ArticleActivity.open(this, g.city.name, ref = it.url)
+            })
         }
 
-        section("Weather calendar", "Seven days of recent weather and seven days ahead")
+        section("Weather", "Live conditions, hourly and 15-day view")
         val w = g.weather
-        if (w == null) {
-            card("Weather unavailable", "The weather service did not respond. Other city information is still available.")
-        } else {
-            card("${w.temperature.toInt()}°C  ·  ${w.description}", "Feels like ${w.feelsLike.toInt()}°C  ·  Humidity ${w.humidity}%  ·  Wind ${w.wind.toInt()} km/h")
-            val iso = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-            val today = iso.format(Date())
-            val rows = w.forecast.mapNotNull { raw ->
-                val p = raw.split("|")
-                if (p.size < 6) null else Pair(p[0], p)
-            }
-            val past = rows.filter { it.first < today }
-            val current = rows.filter { it.first == today }
-            val future = rows.filter { it.first > today }
-            fun weatherRows(label: String, items: List<Pair<String, List<String>>>) {
-                if (items.isEmpty()) return
-                section(label)
-                items.forEach { (date, p) ->
-                    val day = runCatching { SimpleDateFormat("EEE, dd MMM", Locale.US).format(iso.parse(date)!!) }.getOrDefault(date)
-                    val details = p[5] + "  ·  Rain " + p[3] + "% (" + p[4] + " mm)"
-                    card(day, p[1] + "° to " + p[2] + "°  ·  " + details)
-                }
-            }
-            weatherRows("Past 7 days", past)
-            weatherRows("Today", current)
-            weatherRows("Next 7 days", future)
-            card("Weather data", "Past days are model-based historical estimates, not readings from a local weather station. Forecasts can change.")
+        val sky = WeatherStyle.sky(0, true)
+        val wCard = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = GradientDrawable(GradientDrawable.Orientation.TL_BR, sky).apply { cornerRadius = dp(22).toFloat() }
+            setPadding(dp(18), dp(16), dp(18), dp(16))
+            isClickable = true
+            setOnClickListener { WeatherActivity.open(this@CityExplorerActivity, g.city.latitude, g.city.longitude, g.city.name) }
         }
+        val wText = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        wText.addView(text(if (w == null) "Weather" else "${w.temperature.toInt()}°", 40, Color.WHITE, true))
+        wText.addView(text(w?.description ?: "Tap to load the forecast", 14, Color.WHITE))
+        if (w != null) wText.addView(text("Feels like ${w.feelsLike.toInt()}° · Humidity ${w.humidity}% · Wind ${w.wind.toInt()} km/h", 12, 0xCCFFFFFF.toInt()))
+        wCard.addView(wText, LinearLayout.LayoutParams(0, -2, 1f))
+        wCard.addView(Ui.iconView(this, R.drawable.ic_w_partly), LinearLayout.LayoutParams(dp(64), dp(64)))
+        body.addView(wCard, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(6) })
+        body.addView(Ui.button(this, "Open full weather", R.drawable.ic_arrow_forward, blue, 0xFFEAF3FF.toInt(), 12) {
+            WeatherActivity.open(this, g.city.latitude, g.city.longitude, g.city.name)
+        })
 
         section("Travel budget", "Indicative planning ranges per person, per day. Not live prices or a verified city average.")
         card("Budget traveller", "₹1,000–₹1,800 / day · basic stay, local food and public/local transport")
@@ -352,6 +320,9 @@ class CityExplorerActivity : AppCompatActivity() {
         card("Make it your own", "Use the Trip Planner to enter actual stay, food, transport and activity costs.")
 
         section("Places to stay", "Listings mapped by OpenStreetMap contributors. Availability and prices are not verified.")
+        body.addView(Ui.button(this, "Best hotels & prices in ${g.city.name}", R.drawable.ic_hotel, Color.WHITE, blue, 12) {
+            HotelsActivity.open(this, g.city.latitude, g.city.longitude, g.city.name, g.city.country)
+        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6); bottomMargin = dp(10) })
         if (g.hotels.isEmpty()) card("No mapped stays found", "Try a nearby city or search again later.")
         g.hotels.forEach { placeCard(it) }
 
@@ -363,13 +334,19 @@ class CityExplorerActivity : AppCompatActivity() {
         if (g.attractions.isEmpty()) card("No mapped attractions found", "Explore the city overview and most visited slides above.")
         g.attractions.forEach { placeCard(it) }
 
-        section("Local food to discover", "Wikimedia search results. These are research links, not popularity rankings.")
-        if (g.foods.isEmpty()) card("No food articles found", "Try searching the city name with a regional cuisine term.")
-        g.foods.forEach { item ->
-            card(item.title, item.description.ifBlank { item.excerpt })
-            body.addView(button("Read about ${item.title}") { open(item.url) })
-        }
-        card("Data & attribution", "Weather: Open-Meteo. Places: © OpenStreetMap contributors (ODbL). Destination photos & guides: Wikipedia / Wikimedia Commons contributors (CC BY-SA). Check details before travelling.")
+        val foodRegion = g.regionFoods.region.ifBlank { g.city.region.ifBlank { g.city.country } }
+        section("Famous food of ${foodRegion.ifBlank { g.city.name }}", "Traditional dishes this region is known for · tap any dish for details")
+        if (g.regionFoods.items.isNotEmpty()) {
+            g.regionFoods.items.forEach { foodCard(it) }
+        } else if (g.foods.isNotEmpty()) {
+            g.foods.forEach { item ->
+                card(item.title, item.description.ifBlank { item.excerpt })
+                body.addView(Ui.button(this, "Details: ${item.title}", R.drawable.ic_restaurant, blue, 0xFFEAF3FF.toInt(), 12) {
+                    ArticleActivity.open(this, item.title, ref = item.url)
+                })
+            }
+        } else card("No food information found", "Try searching the larger nearby city or state.")
+        card("Data & attribution", "Weather: Open-Meteo. Places and hotels: © OpenStreetMap contributors (ODbL). Maps: Google Maps. Photos, dishes and guides: Wikipedia / Wikimedia Commons contributors (CC BY-SA). Hotel prices are estimates unless a live price is opened. Check details before travelling.")
     }
 
     private fun placeCard(place: CityPlace) {
@@ -385,19 +362,42 @@ class CityExplorerActivity : AppCompatActivity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        actions.addView(button("Directions") {
-            open("https://www.openstreetmap.org/?mlat=${place.latitude}&mlon=${place.longitude}#map=17/${place.latitude}/${place.longitude}")
-        })
+        actions.addView(Ui.button(this, "Map & directions", R.drawable.ic_directions, blue, 0xFFEAF3FF.toInt(), 12) {
+            MapUi.openMap(this, place.latitude, place.longitude, place.name)
+        }, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(6) })
         if (place.website != null) {
-            actions.addView(button("Website") { open(place.website) }.apply {
-                setPadding(dp(12), dp(12), dp(12), dp(12))
-            })
+            actions.addView(Ui.button(this, "Website", R.drawable.ic_public, blue, 0xFFEAF3FF.toInt(), 12) {
+                open(place.website, place.name)
+            }, LinearLayout.LayoutParams(0, -2, 1f))
         }
         box.addView(actions)
         body.addView(box, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(9) })
     }
 
-    private fun open(url: String) {
-        runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+    private fun foodCard(item: FoodItem) {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            background = panel()
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+            isClickable = true
+            setOnClickListener { ArticleActivity.open(this@CityExplorerActivity, item.name, ref = item.wikiTitle, image = item.imageUrl) }
+        }
+        val img = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            background = panel(0xFFFFF2E6.toInt(), 14)
+            clipToOutline = true
+        }
+        if (item.imageUrl != null) ImageLoader.load(item.imageUrl, img) else img.setImageResource(R.drawable.ic_restaurant)
+        if (item.imageUrl == null) img.setPadding(dp(22), dp(22), dp(22), dp(22))
+        box.addView(img, LinearLayout.LayoutParams(dp(84), dp(84)).apply { rightMargin = dp(12) })
+        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        col.addView(text(item.name, 16, ink, true))
+        col.addView(text(item.description, 12, muted).apply { maxLines = 3; ellipsize = android.text.TextUtils.TruncateAt.END })
+        box.addView(col, LinearLayout.LayoutParams(0, -2, 1f))
+        body.addView(box, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(9) })
+    }
+
+    private fun open(url: String, title: String = "") {
+        WebPageActivity.open(this, url, title)
     }
 }

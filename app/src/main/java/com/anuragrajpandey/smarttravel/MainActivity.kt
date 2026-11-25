@@ -4,18 +4,22 @@ import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
 import android.view.Gravity
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.widget.ArrayAdapter
 import android.widget.EditText
 import android.widget.HorizontalScrollView
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.widget.NestedScrollView
@@ -36,42 +40,68 @@ private const val MUTED = 0xFF718096.toInt()
 private const val ACCENT = 0xFF006CE4.toInt()
 private const val BORDER = 0xFFE5EAF2.toInt()
 
-data class Destination(val name: String, val region: String, val mood: String, val budget: String, val detail: String)
-
 class MainActivity : AppCompatActivity() {
     private lateinit var content: LinearLayout
     private val prefs by lazy { getSharedPreferences("flipdoor", MODE_PRIVATE) }
     private var translator: Translator? = null
     private var exploreGeneration = 0
+    private var currentTab = "Explore"
 
-    private val places = listOf(
-        Destination("Rishikesh", "Uttarakhand", "Adventure", "₹8k–₹15k", "River trails, cafés and Himalayan foothills."),
-        Destination("Jaipur", "Rajasthan", "Culture", "₹7k–₹14k", "Historic forts, old-city lanes and regional food."),
-        Destination("Munnar", "Kerala", "Nature", "₹10k–₹18k", "Tea gardens, misty roads and quiet viewpoints."),
-        Destination("Pondicherry", "Tamil Nadu", "Coast", "₹8k–₹16k", "Seafront walks, heritage streets and cafés."),
-        Destination("Ziro Valley", "Arunachal Pradesh", "Hidden gem", "₹12k–₹20k", "Green valleys and Apatani culture. Check permits."),
-        Destination("Gokarna", "Karnataka", "Coast", "₹7k–₹13k", "Quiet beaches and cliffside trails.")
-    )
-
-    private val randomCityPool = listOf(
-        "Udaipur", "Manali", "Darjeeling", "Varanasi", "Hampi", "Shillong", "Coorg",
-        "Leh", "Amritsar", "Ooty", "Paris", "Kyoto", "Bali", "Santorini",
-        "Dubai", "Prague", "Istanbul", "Rome", "London", "Singapore", "Bangkok", "Pokhara"
-    )
+    // Where the user is. Everything on Explore/Gems is built around this.
+    private var meCity: CityLocation? = null
+    private var meArea: String = ""
+    private var locationState = "pending" // pending | locating | denied | unavailable | ready
 
     private val langs = listOf("English", "Hindi", "Spanish", "French", "German", "Japanese", "Korean", "Arabic", "Portuguese", "Russian", "Chinese")
     private val tags = listOf("en", "hi", "es", "fr", "de", "ja", "ko", "ar", "pt", "ru", "zh")
 
+    private val permLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { res ->
+        if (res.values.any { it }) resolveLocation() else { locationState = "denied"; refreshLocationTabs() }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.statusBarColor = BG
-        window.navigationBarColor = Color.WHITE
         show("Explore")
+        // Ask for the user's location as soon as the app launches.
+        if (LocationHelper.hasPermission(this)) resolveLocation() else permLauncher.launch(LocationHelper.PERMISSIONS)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Returning from system settings after granting permission / enabling GPS.
+        if ((locationState == "denied" || locationState == "unavailable") && LocationHelper.hasPermission(this)) resolveLocation()
     }
 
     override fun onDestroy() {
         translator?.close()
         super.onDestroy()
+    }
+
+    private fun resolveLocation() {
+        locationState = "locating"
+        refreshLocationTabs()
+        LocationHelper.getLocation(this) { loc ->
+            if (loc == null) {
+                locationState = "unavailable"
+                refreshLocationTabs()
+                return@getLocation
+            }
+            thread {
+                val rr = GeoRepository.reverseGeocode(loc.latitude, loc.longitude)
+                LocationHelper.save(this, loc.latitude, loc.longitude, rr.city.name, rr.city.country, rr.countryCode)
+                runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
+                    meCity = rr.city
+                    meArea = rr.area
+                    locationState = "ready"
+                    refreshLocationTabs()
+                }
+            }
+        }
+    }
+
+    private fun refreshLocationTabs() {
+        if (currentTab == "Explore" || currentTab == "Gems") show(currentTab)
     }
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
@@ -93,47 +123,39 @@ class MainActivity : AppCompatActivity() {
         setPadding(0, dp(3), 0, dp(5))
     }
 
-    private fun btn(s: String, primary: Boolean = false, click: () -> Unit) = TextView(this).apply {
-        text = s
-        gravity = Gravity.CENTER
-        textSize = 14f
-        setTextColor(if (primary) Color.WHITE else ACCENT)
-        setTypeface(typeface, Typeface.BOLD)
-        background = shape(if (primary) ACCENT else 0xFFEAF3FF.toInt(), 14)
-        setPadding(dp(14), dp(13), dp(14), dp(13))
-        setOnClickListener { click() }
-    }
+    private fun btn(s: String, primary: Boolean = false, click: () -> Unit) =
+        Ui.button(this, s, null, if (primary) Color.WHITE else ACCENT, if (primary) ACCENT else 0xFFEAF3FF.toInt(), 14, click)
 
     private fun heading(k: String, t: String, d: String) {
-        content.addView(txt(k.uppercase(Locale.getDefault()), 10, ACCENT, true))
+        content.addView(txt(k.uppercase(Locale.getDefault()), 11, ACCENT, true))
         content.addView(txt(t, 28, FG, true))
         content.addView(txt(d, 14, MUTED))
     }
 
-    private fun section(s: String) {
+    private fun section(s: String, sub: String = "") {
         content.addView(txt(s, 19, FG, true), LinearLayout.LayoutParams(-1, -2).apply {
             topMargin = dp(20)
-            bottomMargin = dp(10)
+            bottomMargin = if (sub.isEmpty()) dp(10) else 0
         })
+        if (sub.isNotEmpty()) content.addView(txt(sub, 12, MUTED), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
     }
 
-    private fun featureCard(parent: LinearLayout, emoji: String, title: String, sub: String, color: Int, click: () -> Unit) {
+    private fun featureCard(parent: LinearLayout, icon: Int, title: String, sub: String, color: Int, click: () -> Unit) {
         val c = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_VERTICAL
-            background = shape(color, 18)
+            background = Ui.ripple(this@MainActivity, color, 18)
             setPadding(dp(14), dp(14), dp(14), dp(14))
+            isClickable = true
             setOnClickListener { click() }
         }
-        c.addView(txt(emoji, 25))
-        c.addView(txt(title, 14, FG, true))
-        c.addView(txt(sub, 11, MUTED))
-        parent.addView(c, LinearLayout.LayoutParams(0, dp(112), 1f).apply {
-            setMargins(dp(3), dp(3), dp(3), dp(3))
-        })
+        c.addView(Ui.iconView(this, icon, ACCENT), Ui.iconLp(this, 32).apply { bottomMargin = dp(6) })
+        c.addView(txt(title, 15, FG, true))
+        c.addView(txt(sub, 12, MUTED))
+        parent.addView(c, LinearLayout.LayoutParams(0, dp(122), 1f).apply { setMargins(dp(4), dp(4), dp(4), dp(4)) })
     }
 
-    private fun tile(t: String, d: String, click: (() -> Unit)? = null) {
+    private fun tile(t: String, d: String, icon: Int? = null, click: (() -> Unit)? = null) {
         val c = MaterialCardView(this).apply {
             radius = dp(18).toFloat()
             cardElevation = dp(1).toFloat()
@@ -142,18 +164,27 @@ class MainActivity : AppCompatActivity() {
             strokeColor = BORDER
             if (click != null) setOnClickListener { click() }
         }
-        val box = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(16), dp(13), dp(16), dp(11))
         }
+        if (icon != null) {
+            val badge = FrameLayout2.badge(this, icon)
+            row.addView(badge, LinearLayout.LayoutParams(dp(44), dp(44)).apply { rightMargin = dp(14) })
+        }
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         box.addView(txt(t, 16, FG, true))
         box.addView(txt(d, 13, MUTED))
-        c.addView(box)
+        row.addView(box, LinearLayout.LayoutParams(0, -2, 1f))
+        if (click != null) row.addView(Ui.iconView(this, R.drawable.ic_arrow_forward, MUTED), Ui.iconLp(this, 20))
+        c.addView(row)
         content.addView(c, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) })
     }
 
     private fun show(tab: String) {
         exploreGeneration++
+        currentTab = tab
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(BG)
@@ -161,47 +192,57 @@ class MainActivity : AppCompatActivity() {
         val scroll = NestedScrollView(this)
         content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(18), dp(20), dp(22))
+            setPadding(dp(20), dp(12), dp(20), dp(22))
         }
         scroll.addView(content)
         root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
 
         val nav = LinearLayout(this).apply {
             gravity = Gravity.CENTER
-            background = shape(Color.WHITE, 18)
+            background = shape(Color.WHITE, 22)
             elevation = dp(8).toFloat()
-            setPadding(dp(5), dp(6), dp(5), dp(6))
+            setPadding(dp(6), dp(6), dp(6), dp(6))
         }
-        listOf("Explore", "Stay", "Gems", "Tools", "Trips").forEach { n ->
+        listOf("Explore", "Hotels", "Gems", "Tools", "Trips").forEach { n ->
             val icon = when (n) {
-                "Explore" -> "⌂"
-                "Stay" -> "▣"
-                "Gems" -> "✦"
-                "Tools" -> "⚒"
-                else -> "♡"
+                "Explore" -> R.drawable.ic_home
+                "Hotels" -> R.drawable.ic_hotel
+                "Gems" -> R.drawable.ic_explore
+                "Tools" -> R.drawable.ic_build
+                else -> R.drawable.ic_favorite
             }
-            val v = TextView(this).apply {
-                text = icon + System.lineSeparator() + n
-                textSize = 10f
+            val selected = n == tab
+            val v = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
-                setLineSpacing(0f, 1f)
-                setTextColor(if (n == tab) ACCENT else MUTED)
-                background = shape(if (n == tab) 0xFFEAF3FF.toInt() else Color.TRANSPARENT, 13)
-                setPadding(dp(5), dp(7), dp(5), dp(7))
-                setOnClickListener { show(n) }
+                minimumHeight = dp(60)
+                background = Ui.ripple(this@MainActivity, if (selected) 0xFFEAF3FF.toInt() else Color.TRANSPARENT, 16)
+                setPadding(dp(4), dp(8), dp(4), dp(8))
+                isClickable = true
+                setOnClickListener { if (n == "Hotels") openHotels() else show(n) }
             }
-            nav.addView(v, LinearLayout.LayoutParams(0, -2, 1f))
+            v.addView(Ui.iconView(this, icon, if (selected) ACCENT else MUTED), Ui.iconLp(this, 26))
+            v.addView(TextView(this).apply {
+                text = n
+                textSize = 11.5f
+                gravity = Gravity.CENTER
+                setTextColor(if (selected) ACCENT else MUTED)
+                setTypeface(typeface, if (selected) Typeface.BOLD else Typeface.NORMAL)
+                setPadding(0, dp(3), 0, 0)
+            })
+            nav.addView(v, LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(dp(2), 0, dp(2), 0) })
         }
         root.addView(nav, LinearLayout.LayoutParams(-1, -2).apply {
-            setMargins(dp(12), dp(5), dp(12), dp(9))
+            setMargins(dp(12), dp(5), dp(12), dp(8))
         })
         setContentView(root)
+        // Keep everything below the notch / status bar and above the gesture bar.
+        Ui.edgeToEdge(this, root)
         root.alpha = 0f
         root.translationY = dp(8).toFloat()
         root.animate().alpha(1f).translationY(0f).setDuration(220).start()
         when (tab) {
             "Explore" -> explore()
-            "Stay" -> stay()
             "Gems" -> discover()
             "Tools" -> tools()
             else -> trips()
@@ -224,517 +265,287 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    private fun explore() {
-        content.addView(txt("FLIPDOOR", 13, ACCENT, true))
-        content.addView(txt("Your next trip starts here.", 28, FG, true))
-        content.addView(txt("Find stays, explore places and plan every detail.", 14, MUTED))
+    private fun openHotels() {
+        val c = meCity
+        if (c != null) HotelsActivity.open(this, c.latitude, c.longitude, c.name, c.country) else HotelsActivity.open(this)
+    }
 
+    private fun openMap() {
+        val c = meCity
+        if (c == null) {
+            Toast.makeText(this, "Allow location to open the map around you.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        MapUi.openMap(this, c.latitude, c.longitude, "Around ${c.name}", "tourist attractions")
+    }
+
+    private fun weather() {
+        val c = meCity
+        if (c != null) WeatherActivity.open(this, c.latitude, c.longitude, c.name)
+        else startActivity(Intent(this, WeatherActivity::class.java))
+    }
+
+    private fun locationLabel(): String {
+        val c = meCity ?: return ""
+        return listOf(meArea.ifBlank { c.name }, c.region).filter { it.isNotBlank() }.distinct().joinToString(", ")
+    }
+
+    private fun loadingRow(text: String): LinearLayout = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(0, dp(4), 0, dp(8))
+        addView(ProgressBar(this@MainActivity, null, android.R.attr.progressBarStyleSmall), LinearLayout.LayoutParams(dp(18), dp(18)).apply { rightMargin = dp(8) })
+        addView(txt(text, 12, ACCENT, true))
+    }
+
+    /** Shown instead of local content until we know where the user is. */
+    private fun locationCard() {
+        val card = Ui.card(this, 0xFFEAF3FF.toInt(), 20)
+        val (title, msg) = when (locationState) {
+            "locating" -> "Finding your location…" to "Hang on a moment while we find places around you."
+            "unavailable" -> "Turn on location" to "We couldn't get a fix. Switch on location services (GPS) and try again."
+            "denied" -> "Location permission needed" to "FlipDoor shows areas, places, hotels and food around you. Allow location to continue."
+            else -> "Allow location" to "FlipDoor shows areas, places, hotels and food around you."
+        }
+        card.addView(Ui.iconText(this, R.drawable.ic_my_location, title, 16f, FG, 22, true, 10))
+        card.addView(txt(msg, 13, MUTED))
+        if (locationState == "locating") {
+            card.addView(ProgressBar(this), LinearLayout.LayoutParams(dp(32), dp(32)))
+        } else {
+            card.addView(Ui.button(this, if (locationState == "unavailable") "Try again" else "Allow location", R.drawable.ic_my_location) {
+                if (LocationHelper.hasPermission(this)) resolveLocation() else permLauncher.launch(LocationHelper.PERMISSIONS)
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+            if (locationState == "denied" || locationState == "unavailable") {
+                card.addView(Ui.button(this, "Open settings", null, ACCENT, Color.WHITE) {
+                    startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
+                }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+            }
+        }
+        content.addView(card, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(14) })
+    }
+
+    private fun searchHero() {
         val hero = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = gradient(0xFF006CE4.toInt(), 0xFF4C8DFF.toInt(), 24)
-            setPadding(dp(18), dp(18), dp(18), dp(18))
+            setPadding(dp(18), dp(16), dp(18), dp(16))
         }
-        hero.addView(txt("TRAVEL MADE SIMPLE", 10, 0xFFDCEBFF.toInt(), true))
-        hero.addView(txt("Where to next?", 24, Color.WHITE, true))
-        hero.addView(txt("Enter any location to auto-fetch photos, top sights and weather.", 13, Color.WHITE))
-        val destinationInput = EditText(this).apply {
-            hint = "✈  Enter any location (e.g. Jaipur, Paris, Manali)"
+        hero.addView(txt("Planning somewhere else?", 18, Color.WHITE, true))
+        val input = EditText(this).apply {
+            hint = "Search any city, e.g. Jaipur, Paris"
             setSingleLine(true)
             imeOptions = EditorInfo.IME_ACTION_SEARCH
-            setHintTextColor(0xFF718096.toInt())
+            setHintTextColor(MUTED)
             setTextColor(FG)
-            textSize = 14f
+            textSize = 14.5f
             background = shape(Color.WHITE, 12)
             setPadding(dp(14), dp(12), dp(14), dp(12))
-            setOnEditorActionListener { _, actionId, _ ->
-                if (actionId == EditorInfo.IME_ACTION_SEARCH) {
-                    val q = text.toString().trim()
-                    if (q.isNotEmpty()) openCityGuide(q)
-                    true
-                } else {
-                    false
-                }
+            setOnEditorActionListener { _, id, _ ->
+                if (id == EditorInfo.IME_ACTION_SEARCH) { text.toString().trim().takeIf { it.isNotEmpty() }?.let { openCityGuide(it) }; true } else false
             }
         }
-        hero.addView(destinationInput, LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(12) })
-        val searchButton = btn("Search destinations & photos", true) {
-            val q = destinationInput.text.toString().trim()
-            if (q.isNotEmpty()) openCityGuide(q)
-            else destinationInput.error = "Enter a city or place"
-        }
-        searchButton.background = shape(0xFFFFB700.toInt(), 12)
-        searchButton.setTextColor(0xFF172B4D.toInt())
-        hero.addView(searchButton, LinearLayout.LayoutParams(-1, dp(46)).apply { topMargin = dp(9) })
-        content.addView(hero, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(18) })
+        hero.addView(input, LinearLayout.LayoutParams(-1, dp(50)).apply { topMargin = dp(10) })
+        hero.addView(Ui.button(this, "Search", R.drawable.ic_search, FG, Ui.GOLD, 12) {
+            val q = input.text.toString().trim()
+            if (q.isNotEmpty()) openCityGuide(q) else input.error = "Enter a city or place"
+        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+        content.addView(hero, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(14) })
+    }
 
-        // Most visited places big slides section
-        addMostVisitedSection(destinationInput)
-
-        section("Explore by category")
-        val categories = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
-        val chips = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        listOf("🏨 Stays", "🍜 Food", "💎 Hidden Gems", "💸 Budget", "🌦 Weather").forEachIndexed { index, label ->
-            val v = TextView(this).apply {
-                text = label
-                textSize = 13f
-                setTextColor(if (index == 0) Color.WHITE else FG)
-                background = shape(if (index == 0) ACCENT else Color.WHITE, 22)
-                setPadding(dp(15), dp(11), dp(15), dp(11))
-                setOnClickListener {
-                    when (index) {
-                        0 -> show("Stay")
-                        1 -> food()
-                        2 -> show("Gems")
-                        3 -> budget()
-                        else -> weather()
-                    }
-                }
-            }
-            chips.addView(v, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = dp(8) })
-        }
-        categories.addView(chips)
-        content.addView(categories)
-
-        // Hidden gems preview across all places
-        addHiddenGemsPreviewSection()
-
+    private fun featureGrid() {
         section("Plan your trip")
         val row1 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         content.addView(row1)
-        featureCard(row1, "🏨", "Stays", "Hotels & more", 0xFFEAF3FF.toInt()) { show("Stay") }
-        featureCard(row1, "🍜", "Food guide", "Local favourites", 0xFFFFF2E6.toInt()) { food() }
+        featureCard(row1, R.drawable.ic_hotel, "Hotels", "Best stays & prices", 0xFFEAF3FF.toInt()) { openHotels() }
+        featureCard(row1, R.drawable.ic_restaurant, "Local food", "Famous in your state", 0xFFFFF2E6.toInt()) { food() }
         val row2 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         content.addView(row2)
-        featureCard(row2, "🧳", "Trip planner", "Dates & full budget", 0xFFEAF8F0.toInt()) {
+        featureCard(row2, R.drawable.ic_luggage, "Trip planner", "Dates & full budget", 0xFFEAF8F0.toInt()) {
             startActivity(Intent(this, TripPlannerActivity::class.java))
         }
-        featureCard(row2, "🌐", "Translator", "Offline language packs", 0xFFF2EDFF.toInt()) { translate() }
-
-        section("Discover somewhere new")
-        places.take(4).forEachIndexed { index, p ->
-            val colors = listOf(0xFFEAF3FF.toInt(), 0xFFFFF2E6.toInt(), 0xFFEAF8F0.toInt(), 0xFFF2EDFF.toInt())
-            val card = MaterialCardView(this).apply {
-                radius = dp(18).toFloat()
-                cardElevation = dp(1).toFloat()
-                setCardBackgroundColor(Color.WHITE)
-                strokeWidth = dp(1)
-                strokeColor = BORDER
-                setOnClickListener { destination(p) }
-            }
-            val box = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(15), dp(13), dp(15), dp(12))
-            }
-            val tag = TextView(this).apply {
-                text = p.mood.uppercase(Locale.getDefault())
-                textSize = 10f
-                setTextColor(ACCENT)
-                setTypeface(typeface, Typeface.BOLD)
-                background = shape(colors[index], 9)
-                setPadding(dp(9), dp(6), dp(9), dp(6))
-            }
-            box.addView(tag, LinearLayout.LayoutParams(-2, -2))
-            box.addView(txt(p.name, 18, FG, true))
-            box.addView(txt(p.region + "  ·  " + p.budget, 12, MUTED))
-            box.addView(txt(p.detail, 13, MUTED))
-            card.addView(box)
-            content.addView(card, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) })
-        }
-
+        featureCard(row2, R.drawable.ic_public, "Translator", "Offline language packs", 0xFFF2EDFF.toInt()) { translate() }
         section("Travel essentials")
-        tile("Live weather", "Check current conditions and a 3-day forecast") { weather() }
-        tile("Map preview", "A route preview today, live maps integration later") { mapPreview() }
+        tile("Weather", "Live conditions, hourly and 15-day forecast", R.drawable.ic_sun) { weather() }
+        tile("Map", "Google Maps around you, right here in the app", R.drawable.ic_map) { openMap() }
     }
 
-    private fun addMostVisitedSection(heroInput: EditText) {
-        val headerRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
+    private fun explore() {
+        content.addView(txt("FLIPDOOR", 13, ACCENT, true))
+        content.addView(txt("Explore around you", 28, FG, true))
+        val c = meCity
+        if (c == null) {
+            content.addView(txt("Areas, places, hotels and food near where you are.", 14, MUTED))
+            locationCard()
+            searchHero()
+            featureGrid()
+            return
         }
-        val titleCol = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        titleCol.addView(txt("Most visited places", 20, FG, true).apply { setPadding(0, 0, 0, dp(1)) })
-        val subtitleView = txt("Swipe big slides · Tap any photo to view & plan", 12, MUTED)
-        titleCol.addView(subtitleView)
-        headerRow.addView(titleCol, LinearLayout.LayoutParams(0, -2, 1f))
-
-        val randomBtn = TextView(this).apply {
-            text = "🎲 Random"
-            textSize = 12.5f
-            setTextColor(ACCENT)
-            setTypeface(typeface, Typeface.BOLD)
-            background = shape(0xFFEAF3FF.toInt(), 14)
-            setPadding(dp(12), dp(8), dp(12), dp(8))
-        }
-        headerRow.addView(randomBtn, LinearLayout.LayoutParams(-2, -2))
-        content.addView(headerRow, LinearLayout.LayoutParams(-1, -2).apply {
-            topMargin = dp(20)
-            bottomMargin = dp(8)
-        })
-
-        // Status indicator bar for live loading
-        val loadingRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            visibility = View.GONE
-            setPadding(0, dp(2), 0, dp(8))
-        }
-        val spinner = ProgressBar(this, null, android.R.attr.progressBarStyleSmall)
-        val loadingText = txt("Fetching live photos…", 12, ACCENT, true)
-        loadingRow.addView(spinner, LinearLayout.LayoutParams(dp(18), dp(18)).apply { rightMargin = dp(8) })
-        loadingRow.addView(loadingText)
-        content.addView(loadingRow)
-
-        val carousel = PlacesCarouselView(
-            context = this,
-            onPlaceClick = { openPlaceDetail(it) },
-            onPlanClick = { openTripPlanner(it.name) }
-        )
-
-        val chipOptions = listOf("Top Picks", "Jaipur", "Manali", "Goa", "Paris", "Tokyo", "Bali", "🔎 Any city")
-        val chipViews = mutableListOf<TextView>()
-        val chipScroll = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
-        val chipRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-
-        fun selectChip(activeIndex: Int) {
-            chipViews.forEachIndexed { idx, tv ->
-                val active = idx == activeIndex
-                tv.setTextColor(if (active) Color.WHITE else FG)
-                tv.background = shape(if (active) ACCENT else Color.WHITE, 20)
-            }
-        }
-
-        fun loadFeatured() {
-            val gen = ++exploreGeneration
-            selectChip(0)
-            loadingRow.visibility = View.VISIBLE
-            loadingText.text = "Loading featured photos from internet…"
-            subtitleView.text = "Featured destinations · Tap any photo to view & plan"
-            thread {
-                val items = CityDataRepository.fetchFeaturedMostVisited()
-                runOnUiThread {
-                    if (isFinishing || isDestroyed || gen != exploreGeneration) return@runOnUiThread
-                    loadingRow.visibility = View.GONE
-                    carousel.submitPlaces(items)
-                }
-            }
-        }
-
-        fun loadLocationSlides(locationQuery: String, chipIdx: Int = -1) {
-            val clean = locationQuery.trim()
-            if (clean.isBlank()) return
-            val gen = ++exploreGeneration
-            selectChip(chipIdx)
-            loadingRow.visibility = View.VISIBLE
-            loadingText.text = "Auto-fetching photos & places for $clean…"
-            subtitleView.text = "Most visited in $clean · Tap any photo to view & plan"
-            thread {
-                try {
-                    val (city, items) = CityDataRepository.fetchMostVisitedForLocation(clean)
-                    runOnUiThread {
-                        if (isFinishing || isDestroyed || gen != exploreGeneration) return@runOnUiThread
-                        loadingRow.visibility = View.GONE
-                        val locLabel = listOf(city.name, city.country).filter { it.isNotBlank() }.joinToString(", ")
-                        subtitleView.text = "Most visited in $locLabel · Tap any photo to view & plan"
-                        carousel.submitPlaces(items)
-                    }
-                } catch (e: Exception) {
-                    runOnUiThread {
-                        if (isFinishing || isDestroyed || gen != exploreGeneration) return@runOnUiThread
-                        loadingRow.visibility = View.GONE
-                        subtitleView.text = "Could not load $clean — check connection"
-                        Toast.makeText(this@MainActivity, e.message ?: "Location not found", Toast.LENGTH_SHORT).show()
-                    }
-                }
-            }
-        }
-
-        fun promptCustomLocation() {
-            val typedHero = heroInput.text.toString().trim()
-            val input = EditText(this).apply {
-                hint = "e.g. Udaipur, Shimla, Rome, Dubai"
-                setSingleLine(true)
-                if (typedHero.isNotBlank()) setText(typedHero)
-                setPadding(dp(16), dp(12), dp(16), dp(12))
-            }
-            AlertDialog.Builder(this)
-                .setTitle("Explore any location")
-                .setMessage("Enter any city or place to auto-fetch its photos and most visited spots.")
-                .setView(input)
-                .setPositiveButton("Fetch places") { _, _ ->
-                    val q = input.text.toString().trim()
-                    if (q.isNotBlank()) loadLocationSlides(q, chipOptions.lastIndex)
-                }
-                .setNegativeButton("Cancel", null)
-                .show()
-        }
-
-        chipOptions.forEachIndexed { idx, label ->
-            val tv = TextView(this).apply {
-                text = label
-                textSize = 12.5f
-                setTypeface(typeface, Typeface.BOLD)
-                setTextColor(if (idx == 0) Color.WHITE else FG)
-                background = shape(if (idx == 0) ACCENT else Color.WHITE, 20)
-                setPadding(dp(13), dp(8), dp(13), dp(8))
-                setOnClickListener {
-                    when (idx) {
-                        0 -> loadFeatured()
-                        chipOptions.lastIndex -> promptCustomLocation()
-                        else -> loadLocationSlides(label, idx)
-                    }
-                }
-            }
-            chipViews.add(tv)
-            chipRow.addView(tv, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = dp(8) })
-        }
-        chipScroll.addView(chipRow)
-        content.addView(chipScroll, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) })
-
-        randomBtn.setOnClickListener {
-            val pick = randomCityPool.random()
-            loadLocationSlides(pick, -1)
-        }
-
-        content.addView(carousel.container, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(6) })
-
-        // Immediately show curated defaults while live internet photos load in background
-        loadFeatured()
-    }
-
-    private fun addHiddenGemsPreviewSection() {
-        val headerRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        val titleCol = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        titleCol.addView(txt("💎 Hidden gems", 19, FG, true).apply { setPadding(0, 0, 0, dp(1)) })
-        titleCol.addView(txt("Offbeat places across India & world · Tap to explore", 12, MUTED))
-        headerRow.addView(titleCol, LinearLayout.LayoutParams(0, -2, 1f))
-
-        val seeAllBtn = TextView(this).apply {
-            text = "All gems →"
-            textSize = 12.5f
-            setTextColor(ACCENT)
-            setTypeface(typeface, Typeface.BOLD)
-            background = shape(0xFFEAF3FF.toInt(), 14)
-            setPadding(dp(12), dp(8), dp(12), dp(8))
-            setOnClickListener { show("Gems") }
-        }
-        headerRow.addView(seeAllBtn, LinearLayout.LayoutParams(-2, -2))
-        content.addView(headerRow, LinearLayout.LayoutParams(-1, -2).apply {
-            topMargin = dp(20)
-            bottomMargin = dp(8)
-        })
-
-        val gemScroll = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
-        val gemRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        gemScroll.addView(gemRow)
-        content.addView(gemScroll, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(4) })
-
+        content.addView(Ui.iconText(this, R.drawable.ic_place, locationLabel(), 14f, MUTED, 16, true))
+        searchHero()
         val gen = exploreGeneration
+
+        // 1. Places around the user
+        section("Places around ${c.name}", "Landmarks within about 10 km · tap a photo for full details")
+        val loading = loadingRow("Finding places near you…")
+        content.addView(loading)
+        val carousel = PlacesCarouselView(this, { openPlaceDetail(it) }, { openTripPlanner(it.name) })
+        content.addView(carousel.container, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(6) })
         thread {
-            val gems = CityDataRepository.fetchAllHiddenGems()
+            val items = runCatching { CityDataRepository.mostVisitedFor(c) }.getOrDefault(emptyList())
             runOnUiThread {
                 if (isFinishing || isDestroyed || gen != exploreGeneration) return@runOnUiThread
-                gemRow.removeAllViews()
-                gems.take(10).forEachIndexed { idx, gem ->
-                    gemRow.addView(
-                        HiddenGemCardsHelper.createCard(
-                            context = this@MainActivity,
-                            place = gem,
-                            index = idx,
-                            fullWidth = false,
-                            onPlaceClick = { openPlaceDetail(it) },
-                            onPlanClick = { openTripPlanner(it.name) }
-                        )
-                    )
+                loading.visibility = View.GONE
+                if (items.isEmpty()) content.addView(txt("No landmarks were found near you. Try the area list below.", 13, MUTED))
+                else carousel.submitPlaces(items)
+            }
+        }
+
+        // 2. Nearby areas
+        val areasHolder = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        content.addView(areasHolder)
+        areasHolder.addView(loadingRow("Finding areas near you…"))
+        thread {
+            val areas = runCatching { GeoRepository.nearbyAreas(c.latitude, c.longitude) }.getOrDefault(emptyList())
+            runOnUiThread {
+                if (isFinishing || isDestroyed || gen != exploreGeneration) return@runOnUiThread
+                areasHolder.removeAllViews()
+                if (areas.isEmpty()) return@runOnUiThread
+                areasHolder.addView(txt("Areas near you", 19, FG, true), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(20) })
+                areasHolder.addView(txt("Open an area for its places, weather, hotels and famous food", 12, MUTED), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
+                areas.take(10).forEach { a -> areasHolder.addView(areaTile(a, c), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) }) }
+            }
+        }
+
+        // 3. Famous food of the user's state
+        val foodHolder = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        content.addView(foodHolder)
+        thread {
+            val bundle = runCatching { GeoRepository.regionFoods(c.region, c.country) }.getOrDefault(FoodBundle("", emptyList()))
+            runOnUiThread {
+                if (isFinishing || isDestroyed || gen != exploreGeneration || bundle.items.isEmpty()) return@runOnUiThread
+                foodHolder.addView(txt("Famous food in ${bundle.region}", 19, FG, true), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(20) })
+                foodHolder.addView(txt("Dishes this region is known for · tap for details", 12, MUTED), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
+                val hs = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
+                val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+                bundle.items.forEach { row.addView(FoodUi.tallCard(this, it), LinearLayout.LayoutParams(dp(150), -2).apply { rightMargin = dp(10) }) }
+                hs.addView(row)
+                foodHolder.addView(hs)
+            }
+        }
+
+        // 4. Hidden gems nearby
+        val gemHolder = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        content.addView(gemHolder)
+        thread {
+            val gems = runCatching { CityDataRepository.hiddenGemsFor(c) }.getOrDefault(emptyList())
+            runOnUiThread {
+                if (isFinishing || isDestroyed || gen != exploreGeneration || gems.isEmpty()) return@runOnUiThread
+                gemHolder.addView(txt("Hidden gems nearby", 19, FG, true), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(20) })
+                gemHolder.addView(txt("Offbeat spots close to you · tap to explore", 12, MUTED), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
+                val hs = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
+                val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+                gems.take(10).forEachIndexed { i, g ->
+                    row.addView(HiddenGemCardsHelper.createCard(this, g, i, false, { openPlaceDetail(it) }, { openTripPlanner(it.name) }))
                 }
+                hs.addView(row)
+                gemHolder.addView(hs)
             }
         }
+
+        featureGrid()
     }
 
-    private fun stay() {
-        heading("STAYS", "Find your kind of stay.", "Explore stay styles. Live booking availability is not connected.")
-        listOf("Boutique hotels", "Hostels", "Homestays", "Resorts & retreats").forEach {
-            tile(it, "Sample category · connect booking inventory for live prices")
-        }
-        section("Popular stay areas")
-        listOf("Jaipur · Pink City", "Rishikesh · Tapovan", "Goa · Anjuna", "Munnar · Chithirapuram").forEach {
-            tile(it, "Area guide · sample content")
-        }
-    }
-
-    private fun discover() {
-        heading("HIDDEN GEMS", "Take the quieter road.", "Explore secret & offbeat places from all regions, or search any city.")
-        val gen = exploreGeneration
-
-        val loadingRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dp(4), 0, dp(8))
-        }
-        val spinner = ProgressBar(this, null, android.R.attr.progressBarStyleSmall)
-        val loadingText = txt("Loading hidden gems & photos…", 12, ACCENT, true)
-        loadingRow.addView(spinner, LinearLayout.LayoutParams(dp(18), dp(18)).apply { rightMargin = dp(8) })
-        loadingRow.addView(loadingText)
-        content.addView(loadingRow)
-
-        val regions = listOf("All", "Himalayas", "Northeast", "Coast", "Heritage", "Global", "🔎 Any city")
-        val chipViews = mutableListOf<TextView>()
-        val chipScroll = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
-        val chipRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        val listContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-
-        var allCuratedGems: List<MostVisitedPlace> = emptyList()
-
-        fun selectChip(activeIdx: Int) {
-            chipViews.forEachIndexed { i, tv ->
-                val active = i == activeIdx
-                tv.setTextColor(if (active) Color.WHITE else FG)
-                tv.background = shape(if (active) ACCENT else Color.WHITE, 20)
-            }
-        }
-
-        fun renderGemList(items: List<MostVisitedPlace>) {
-            listContainer.removeAllViews()
-            if (items.isEmpty()) {
-                tile("No hidden gems found", "Try another region filter or search a different city.")
-                return
-            }
-            items.forEachIndexed { idx, gem ->
-                listContainer.addView(
-                    HiddenGemCardsHelper.createCard(
-                        context = this@MainActivity,
-                        place = gem,
-                        index = idx,
-                        fullWidth = true,
-                        onPlaceClick = { openPlaceDetail(it) },
-                        onPlanClick = { openTripPlanner(it.name) }
-                    )
+    private fun areaTile(a: NearbyArea, me: CityLocation): View {
+        val card = MaterialCardView(this).apply {
+            radius = dp(16).toFloat()
+            cardElevation = dp(1).toFloat()
+            setCardBackgroundColor(PANEL)
+            strokeWidth = dp(1)
+            strokeColor = BORDER
+            setOnClickListener {
+                startActivity(
+                    Intent(this@MainActivity, CityExplorerActivity::class.java)
+                        .putExtra("city_query", a.name).putExtra("lat", a.lat).putExtra("lon", a.lon)
+                        .putExtra("region", me.region).putExtra("country", me.country)
                 )
             }
         }
-
-        fun applyRegionFilter(region: String, idx: Int) {
-            selectChip(idx)
-            val filtered = if (region == "All") {
-                allCuratedGems
-            } else {
-                allCuratedGems.filter { it.category.contains(region, ignoreCase = true) }
-            }
-            renderGemList(filtered)
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(14), dp(12), dp(14), dp(12))
         }
-
-        fun searchCityHiddenGems() {
-            val input = EditText(this).apply {
-                hint = "e.g. Jaipur, Manali, Paris, Goa"
-                setSingleLine(true)
-                setPadding(dp(16), dp(12), dp(16), dp(12))
-            }
-            AlertDialog.Builder(this)
-                .setTitle("Hidden gems in any city")
-                .setMessage("Enter any location to auto-fetch offbeat viewpoints, trails, ruins and secret local spots.")
-                .setView(input)
-                .setPositiveButton("Find gems") { _, _ ->
-                    val q = input.text.toString().trim()
-                    if (q.isBlank()) return@setPositiveButton
-                    selectChip(regions.lastIndex)
-                    loadingRow.visibility = View.VISIBLE
-                    loadingText.text = "Searching hidden gems around $q…"
-                    thread {
-                        try {
-                            val (city, gems) = CityDataRepository.fetchHiddenGemsForLocation(q)
-                            runOnUiThread {
-                                if (isFinishing || isDestroyed || gen != exploreGeneration) return@runOnUiThread
-                                loadingRow.visibility = View.GONE
-                                Toast.makeText(this@MainActivity, "Found ${gems.size} hidden gems in ${city.name}", Toast.LENGTH_SHORT).show()
-                                renderGemList(gems)
-                            }
-                        } catch (e: Exception) {
-                            runOnUiThread {
-                                if (isFinishing || isDestroyed || gen != exploreGeneration) return@runOnUiThread
-                                loadingRow.visibility = View.GONE
-                                Toast.makeText(this@MainActivity, e.message ?: "Location not found", Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    }
-                }
-                .setNegativeButton("Cancel", null)
-                .show()
-        }
-
-        regions.forEachIndexed { idx, label ->
-            val tv = TextView(this).apply {
-                text = label
-                textSize = 12.5f
-                setTypeface(typeface, Typeface.BOLD)
-                setTextColor(if (idx == 0) Color.WHITE else FG)
-                background = shape(if (idx == 0) ACCENT else Color.WHITE, 20)
-                setPadding(dp(13), dp(8), dp(13), dp(8))
-                setOnClickListener {
-                    if (idx == regions.lastIndex) searchCityHiddenGems()
-                    else applyRegionFilter(label, idx)
-                }
-            }
-            chipViews.add(tv)
-            chipRow.addView(tv, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = dp(8) })
-        }
-        chipScroll.addView(chipRow)
-        content.addView(chipScroll, LinearLayout.LayoutParams(-1, -2).apply {
-            topMargin = dp(6)
-            bottomMargin = dp(12)
-        })
-        content.addView(listContainer)
-
-        thread {
-            val loaded = CityDataRepository.fetchAllHiddenGems()
-            runOnUiThread {
-                if (isFinishing || isDestroyed || gen != exploreGeneration) return@runOnUiThread
-                loadingRow.visibility = View.GONE
-                allCuratedGems = loaded
-                renderGemList(loaded)
-            }
-        }
+        row.addView(FrameLayout2.badge(this, R.drawable.ic_place), LinearLayout.LayoutParams(dp(42), dp(42)).apply { rightMargin = dp(12) })
+        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        col.addView(txt(a.name, 16, FG, true).apply { setPadding(0, 0, 0, 0) })
+        col.addView(txt(a.kind.replaceFirstChar { it.uppercase() } + "  ·  " + Ui.dist(a.distanceKm), 12, MUTED).apply { setPadding(0, dp(1), 0, 0) })
+        row.addView(col, LinearLayout.LayoutParams(0, -2, 1f))
+        row.addView(Ui.iconView(this, R.drawable.ic_arrow_forward, MUTED), Ui.iconLp(this, 20))
+        card.addView(row)
+        return card
     }
 
-    private fun destination(p: Destination) {
-        content.removeAllViews()
-        heading("DESTINATION", p.name, p.region + " · " + p.mood)
-        section("The feel")
-        tile("Why go", p.detail)
-        tile("Typical trip budget", p.budget)
-        tile("Live photos & most visited spots", "Explore internet photos, landmarks and weather for ${p.name}") { openCityGuide(p.name) }
-        tile("Stay ideas", "Hotels, hostels and homestays") { show("Stay") }
-        tile("Local food", "Regional food guide") { food() }
-        content.addView(btn("✈  Plan a trip to ${p.name}", true) { openTripPlanner(p.name) },
-            LinearLayout.LayoutParams(-1, dp(50)).apply { bottomMargin = dp(8) })
-        content.addView(btn("Save to My Trips", false) {
-            prefs.edit().putString("saved", p.name).apply()
-            Toast.makeText(this, "Saved " + p.name, Toast.LENGTH_SHORT).show()
-        }, LinearLayout.LayoutParams(-1, dp(50)))
+    private fun discover() {
+        heading("HIDDEN GEMS", "Take the quieter road.", "Offbeat viewpoints, trails and secret spots around you.")
+        val c = meCity
+        if (c == null) {
+            locationCard()
+            return
+        }
+        content.addView(Ui.iconText(this, R.drawable.ic_place, locationLabel(), 13f, MUTED, 16, true))
+        val gen = exploreGeneration
+        val loading = loadingRow("Searching hidden gems around ${c.name}…")
+        content.addView(loading, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        content.addView(list)
+        thread {
+            val gems = runCatching { CityDataRepository.hiddenGemsFor(c) }.getOrDefault(emptyList())
+            runOnUiThread {
+                if (isFinishing || isDestroyed || gen != exploreGeneration) return@runOnUiThread
+                loading.visibility = View.GONE
+                if (gems.isEmpty()) list.addView(txt("No hidden gems were found close to you yet.", 14, MUTED))
+                gems.forEachIndexed { i, g ->
+                    list.addView(HiddenGemCardsHelper.createCard(this, g, i, true, { openPlaceDetail(it) }, { openTripPlanner(it.name) }))
+                }
+            }
+        }
     }
 
     private fun food() {
         content.removeAllViews()
-        heading("FOOD", "Taste the destination.", "Regional favourites to try.")
-        listOf(
-            "Rajasthan · Dal baati churma, pyaaz kachori",
-            "Uttarakhand · Kafuli, aloo ke gutke",
-            "Kerala · Appam, puttu and kadala curry",
-            "Tamil Nadu · Dosa, pongal and filter coffee",
-            "Karnataka · Bisi bele bath, neer dosa"
-        ).forEach { tile(it, "Regional food guide · sample suggestions") }
+        heading("FOOD", "Taste your region.", "Famous dishes from where you are.")
+        val c = meCity
+        if (c == null) {
+            locationCard()
+            return
+        }
+        val gen = exploreGeneration
+        val loading = loadingRow("Finding famous food in ${c.region.ifBlank { c.name }}…")
+        content.addView(loading)
+        thread {
+            val bundle = runCatching { GeoRepository.regionFoods(c.region, c.country) }.getOrDefault(FoodBundle("", emptyList()))
+            runOnUiThread {
+                if (isFinishing || isDestroyed || gen != exploreGeneration) return@runOnUiThread
+                loading.visibility = View.GONE
+                if (bundle.items.isEmpty()) content.addView(txt("We couldn't find food information for this region.", 14, MUTED))
+                else {
+                    section("Famous in ${bundle.region}")
+                    bundle.items.forEach { FoodUi.addRow(this, content, it) }
+                }
+            }
+        }
     }
 
     private fun tools() {
         heading("TOOLS", "Travel lighter.", "Utilities for the road.")
-        tile("Trip planner", "Plan dates, travellers and a full trip budget") {
+        tile("Weather", "Live conditions and forecast", R.drawable.ic_sun) { weather() }
+        tile("Hotels nearby", "Best stays with pricing", R.drawable.ic_hotel) { openHotels() }
+        tile("Map", "Google Maps around you, inside the app", R.drawable.ic_map) { openMap() }
+        tile("Trip planner", "Plan dates, travellers and a full trip budget", R.drawable.ic_luggage) {
             startActivity(Intent(this, TripPlannerActivity::class.java))
         }
-        tile("Trip budget", "Quick cost calculator") { budget() }
-        tile("Translator", "Downloadable offline language models") { translate() }
-        tile("Weather calendar", "Past 7 days and next 7 days") { openCityGuide("Mathura") }
-        tile("Map preview", "Mock map ready for later API integration") { mapPreview() }
+        tile("Trip budget", "Quick cost calculator", R.drawable.ic_wallet) { budget() }
+        tile("Translator", "Downloadable offline language models", R.drawable.ic_public) { translate() }
     }
 
     private fun budget() {
@@ -810,28 +621,6 @@ class MainActivity : AppCompatActivity() {
                 ?.addOnFailureListener { status.text = "Download failed. Check internet." }
         }, LinearLayout.LayoutParams(-1, dp(52)))
         content.addView(txt("After download, supported language pairs translate without internet. Model availability varies.", 12, MUTED))
-    }
-
-    private fun weather() {
-        openCityGuide("Mathura")
-    }
-
-    private fun mapPreview() {
-        content.removeAllViews()
-        heading("MAP PREVIEW", "Your route, at a glance.", "Mock interface only. Live tiles, GPS and directions are not connected.")
-        val m = TextView(this).apply {
-            text = "  ·   ╲      ●\n──────╲────\n ●─────╲──●\n ·      ╲   ·\n────●──────"
-            textSize = 25f
-            gravity = Gravity.CENTER
-            setTextColor(ACCENT)
-            background = shape(0xFFE5EFFA.toInt(), 22)
-        }
-        content.addView(m, LinearLayout.LayoutParams(-1, dp(270)).apply {
-            topMargin = dp(12)
-            bottomMargin = dp(12)
-        })
-        tile("Nearby", "Hotels · Restaurants · Attractions")
-        tile("Route planner", "Multi-stop routing planned after maps API integration.")
     }
 
     private fun trips() {

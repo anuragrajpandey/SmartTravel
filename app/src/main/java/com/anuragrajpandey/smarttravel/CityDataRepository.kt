@@ -36,7 +36,8 @@ data class CityGuide(
     val foods: List<WikiItem>,
     val mostVisited: List<MostVisitedPlace> = emptyList(),
     val photos: List<String> = emptyList(),
-    val hiddenGems: List<MostVisitedPlace> = emptyList()
+    val hiddenGems: List<MostVisitedPlace> = emptyList(),
+    val regionFoods: FoodBundle = FoodBundle("", emptyList())
 )
 
 object CityDataRepository {
@@ -83,7 +84,7 @@ object CityDataRepository {
         FeaturedSeed("Sintra", "Sintra", "Portugal", "Hidden Gem · Global", "Misty forested hills filled with pastel palaces and hidden gardens.", "Sintra")
     )
 
-    private fun get(url: String): String {
+    internal fun get(url: String): String {
         val connection = URL(url).openConnection() as HttpURLConnection
         connection.connectTimeout = 12000
         connection.readTimeout = 18000
@@ -119,8 +120,10 @@ object CityDataRepository {
         )
     }
 
-    fun searchCity(query: String): CityGuide {
-        val city = geocodeCity(query)
+    fun searchCity(query: String): CityGuide = searchCity(geocodeCity(query))
+
+    fun searchCity(city: CityLocation): CityGuide {
+        var foodBundle = FoodBundle("", emptyList())
         var weather: WeatherSnapshot? = null
         var places: List<CityPlace> = emptyList()
         var overview: WikiItem? = null
@@ -128,7 +131,11 @@ object CityDataRepository {
         var mostVisited: List<MostVisitedPlace> = emptyList()
         var photos: List<String> = emptyList()
 
-        val latch = CountDownLatch(5)
+        val latch = CountDownLatch(6)
+        Thread {
+            foodBundle = runCatching { GeoRepository.regionFoods(city.region, city.country) }.getOrDefault(FoodBundle("", emptyList()))
+            latch.countDown()
+        }.start()
         Thread {
             weather = runCatching { loadWeather(city) }.getOrNull()
             latch.countDown()
@@ -175,7 +182,8 @@ object CityDataRepository {
             foods,
             finalMostVisited,
             photos,
-            hiddenGems
+            hiddenGems,
+            foodBundle
         )
     }
 
@@ -334,6 +342,21 @@ object CityDataRepository {
             buildFallbackMostVisited(city, osmAttractions, photos)
         }
         return city to result
+    }
+
+    /** Most-visited places around an exact point (used for the user's current location). */
+    fun mostVisitedFor(city: CityLocation): List<MostVisitedPlace> {
+        val (places, photos) = loadMostVisitedAndPhotos(city)
+        if (places.isNotEmpty()) return places
+        val osm = runCatching { loadPlaces(city).filter { it.type == "Attraction" } }.getOrDefault(emptyList())
+        return buildFallbackMostVisited(city, osm, photos)
+    }
+
+    /** Offbeat spots around an exact point. */
+    fun hiddenGemsFor(city: CityLocation): List<MostVisitedPlace> {
+        val (visited, photos) = loadMostVisitedAndPhotos(city)
+        val osm = runCatching { loadPlaces(city) }.getOrDefault(emptyList())
+        return deriveCityHiddenGems(city, visited, osm, photos)
     }
 
     fun fetchPlaceGallery(placeName: String, locationHint: String): List<String> {
