@@ -10,7 +10,7 @@ tasks.named("preBuild").configure { dependsOn(prepareFlipDoorLauncherIcon) }
 android {
  sourceSets.getByName("main").res.srcDir(generatedFlipDoorRes)
  namespace="com.anuragrajpandey.smarttravel"; compileSdk=35
- defaultConfig { applicationId="com.anuragrajpandey.smarttravel"; minSdk=24; targetSdk=35; versionCode=3; versionName="1.1.0"
+ defaultConfig { applicationId="com.anuragrajpandey.smarttravel"; minSdk=24; targetSdk=34; versionCode=3; versionName="1.1.0"
   // Optional: official Google Maps Embed API key (free). Leave empty to use the keyless embed.
   val mapsKey = (project.findProperty("MAPS_EMBED_KEY") as String?) ?: ""
   buildConfigField("String", "MAPS_EMBED_KEY", "\"" + mapsKey + "\"")

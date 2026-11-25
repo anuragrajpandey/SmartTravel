@@ -149,7 +149,7 @@ object CityDataRepository {
             latch.countDown()
         }.start()
         Thread {
-            foods = runCatching { wikiSearch("${city.name} ${city.country} traditional food cuisine dishes", 6) }.getOrDefault(emptyList())
+            foods = runCatching { wikiSearch("${city.name} ${city.region} ${city.country} famous traditional food cuisine dishes regional specialties", 8) }.getOrDefault(emptyList())
             latch.countDown()
         }.start()
         Thread {
