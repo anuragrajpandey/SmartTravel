@@ -5,9 +5,11 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.location.Location
+import android.location.LocationListener
 import android.location.LocationManager
+import android.os.Bundle
+import android.os.Looper
 import androidx.core.content.ContextCompat
-import androidx.core.location.LocationManagerCompat
 
 /** Thin wrapper over the platform LocationManager (no Google Play services needed). */
 object LocationHelper {
@@ -18,7 +20,7 @@ object LocationHelper {
     }
 
     /** Delivers the freshest available location (or null) on the main thread. */
-    @SuppressLint("MissingPermission")
+    @SuppressLint("MissingPermission", "Deprecated")
     fun getLocation(ctx: Context, callback: (Location?) -> Unit) {
         if (!hasPermission(ctx)) { callback(null); return }
         try {
@@ -38,10 +40,26 @@ object LocationHelper {
             }
             if (provider == null) { callback(best); return }
             val fallback = best
-            LocationManagerCompat.getCurrentLocation(lm, provider, null, ContextCompat.getMainExecutor(ctx)) { loc ->
-                callback(loc ?: fallback)
+            val listener = object : LocationListener {
+                override fun onLocationChanged(location: Location) {
+                    runCatching { lm.removeUpdates(this) }
+                    callback(location)
+                }
+
+                override fun onProviderDisabled(provider: String) {
+                    runCatching { lm.removeUpdates(this) }
+                    callback(fallback)
+                }
+
+                override fun onProviderEnabled(provider: String) = Unit
+
+                @Deprecated("Deprecated by Android")
+                override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) = Unit
             }
+            lm.requestSingleUpdate(provider, listener, Looper.getMainLooper())
         } catch (e: SecurityException) {
+            callback(null)
+        } catch (e: IllegalArgumentException) {
             callback(null)
         }
     }
