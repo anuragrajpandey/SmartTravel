@@ -12,6 +12,7 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -41,9 +42,6 @@ class PlaceDetailActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.statusBarColor = bg
-        window.navigationBarColor = Color.WHITE
-
         val passed = IntentCompat.getSerializableExtra(intent, "place", MostVisitedPlace::class.java)
         if (passed == null) {
             finish()
@@ -74,40 +72,32 @@ class PlaceDetailActivity : AppCompatActivity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(bg)
-            fitsSystemWindows = true
         }
 
-        // Top navigation bar
-        val top = LinearLayout(this).apply {
+        // Top bar: back arrow, title, save toggle (vector icons, 48dp touch targets)
+        val saveTop = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(12), dp(10), dp(14), dp(8))
+            minimumHeight = dp(40)
+            background = Ui.ripple(this@PlaceDetailActivity, 0xFFEAF3FF.toInt(), 20)
+            setPadding(dp(12), dp(8), dp(14), dp(8))
         }
-        val back = TextView(this).apply {
-            text = "‹"
-            textSize = 34f
-            setTextColor(ink)
-            gravity = Gravity.CENTER
-            setOnClickListener { finish() }
+        fun paintSave(saved: Boolean) {
+            saveTop.removeAllViews()
+            saveTop.addView(
+                Ui.iconView(this, if (saved) R.drawable.ic_favorite else R.drawable.ic_favorite_border, blue),
+                Ui.iconLp(this, 20).apply { rightMargin = dp(6) }
+            )
+            saveTop.addView(TextView(this).apply {
+                text = if (saved) "Saved" else "Save"
+                textSize = 13.5f
+                setTextColor(blue)
+                setTypeface(typeface, Typeface.BOLD)
+            })
         }
-        top.addView(back, LinearLayout.LayoutParams(dp(42), dp(44)))
-        top.addView(label(place.name, 18, ink, true).apply {
-            maxLines = 1
-        }, LinearLayout.LayoutParams(0, -2, 1f))
-        val saveTopBtn = TextView(this).apply {
-            text = if (isPlaceSaved(place.name)) "♥ Saved" else "♡ Save"
-            textSize = 13f
-            setTextColor(blue)
-            setTypeface(typeface, Typeface.BOLD)
-            background = shape(0xFFEAF3FF.toInt(), 12)
-            setPadding(dp(12), dp(8), dp(12), dp(8))
-            setOnClickListener {
-                savePlace(place)
-                text = "♥ Saved"
-            }
-        }
-        top.addView(saveTopBtn, LinearLayout.LayoutParams(-2, -2))
-        root.addView(top)
+        paintSave(isPlaceSaved(place.name))
+        saveTop.setOnClickListener { savePlace(place); paintSave(true) }
+        root.addView(Ui.topBar(this, place.name, ink, listOf(saveTop)))
 
         val scroll = NestedScrollView(this)
         val body = LinearLayout(this).apply {
@@ -124,9 +114,7 @@ class PlaceDetailActivity : AppCompatActivity() {
             setCardBackgroundColor(0xFF0B3C5D.toInt())
         }
         val sliderFrame = FrameLayout(this)
-        galleryPager = ViewPager2(this).apply {
-            offscreenPageLimit = 2
-        }
+        galleryPager = ViewPager2(this).apply { offscreenPageLimit = 2 }
         galleryPager.adapter = GalleryAdapter(galleryUrls)
         sliderFrame.addView(galleryPager, FrameLayout.LayoutParams(-1, dp(290)))
 
@@ -135,58 +123,38 @@ class PlaceDetailActivity : AppCompatActivity() {
             textSize = 11.5f
             setTextColor(Color.WHITE)
             setTypeface(typeface, Typeface.BOLD)
-            background = GradientDrawable().apply {
-                setColor(0x88000000.toInt())
-                cornerRadius = dp(10).toFloat()
-            }
+            background = GradientDrawable().apply { setColor(0x88000000.toInt()); cornerRadius = dp(10).toFloat() }
             setPadding(dp(10), dp(5), dp(10), dp(5))
         }
         sliderFrame.addView(photoCountBadge, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.END).apply {
-            topMargin = dp(14)
-            rightMargin = dp(14)
+            topMargin = dp(14); rightMargin = dp(14)
         })
-
-        val swipeHint = TextView(this).apply {
+        val categoryBadge = TextView(this).apply {
             text = place.category.uppercase(Locale.getDefault())
             textSize = 10.5f
             setTextColor(Color.WHITE)
             setTypeface(typeface, Typeface.BOLD)
-            background = GradientDrawable().apply {
-                setColor(0x88000000.toInt())
-                cornerRadius = dp(10).toFloat()
-            }
+            background = GradientDrawable().apply { setColor(0x88000000.toInt()); cornerRadius = dp(10).toFloat() }
             setPadding(dp(10), dp(5), dp(10), dp(5))
         }
-        sliderFrame.addView(swipeHint, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START).apply {
-            topMargin = dp(14)
-            leftMargin = dp(14)
+        sliderFrame.addView(categoryBadge, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START).apply {
+            topMargin = dp(14); leftMargin = dp(14)
         })
-
         sliderCard.addView(sliderFrame)
         body.addView(sliderCard, LinearLayout.LayoutParams(-1, dp(290)))
 
-        dotsRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-        }
-        body.addView(dotsRow, LinearLayout.LayoutParams(-1, -2).apply {
-            topMargin = dp(10)
-            bottomMargin = dp(8)
-        })
+        dotsRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
+        body.addView(dotsRow, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10); bottomMargin = dp(8) })
         galleryPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
-            override fun onPageSelected(position: Int) {
-                updateGalleryDots(position)
-            }
+            override fun onPageSelected(position: Int) { updateGalleryDots(position) }
         })
         updateGalleryDots(0)
 
         // Title & location
-        body.addView(label(place.name, 26, ink, true).apply {
-            setPadding(0, dp(6), 0, dp(2))
-        })
-        body.addView(label("📍 ${place.location}", 14, blue, true))
+        body.addView(label(place.name, 26, ink, true).apply { setPadding(0, dp(6), 0, dp(2)) })
+        body.addView(Ui.iconText(this, R.drawable.ic_place, place.location, 14f, blue, 18, true))
 
-        // Overview card
+        // Quick summary
         val infoCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = shape(Color.WHITE, 18)
@@ -194,85 +162,76 @@ class PlaceDetailActivity : AppCompatActivity() {
         }
         infoCard.addView(label("About this place", 16, ink, true))
         infoCard.addView(label(place.summary, 14, muted))
-        body.addView(infoCard, LinearLayout.LayoutParams(-1, -2).apply {
-            topMargin = dp(12)
-            bottomMargin = dp(14)
-        })
+        body.addView(infoCard, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12); bottomMargin = dp(14) })
 
-        // Primary Plan a Trip CTA
-        val planBtn = TextView(this).apply {
-            text = "✈  Plan a trip to ${place.name}"
-            gravity = Gravity.CENTER
-            textSize = 15f
-            setTextColor(ink)
-            setTypeface(typeface, Typeface.BOLD)
-            background = shape(gold, 14)
-            setPadding(dp(14), dp(15), dp(14), dp(15))
-            setOnClickListener {
-                startActivity(
-                    Intent(this@PlaceDetailActivity, TripPlannerActivity::class.java)
-                        .putExtra("destination", place.name)
-                        .putExtra("trip_name", "Trip to ${place.name}")
-                )
-            }
-        }
-        body.addView(planBtn, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) })
+        // Actions
+        body.addView(Ui.button(this, "Plan a trip to ${place.name}", R.drawable.ic_flight, ink, gold, 14) {
+            startActivity(
+                Intent(this, TripPlannerActivity::class.java)
+                    .putExtra("destination", place.name)
+                    .putExtra("trip_name", "Trip to ${place.name}")
+            )
+        }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) })
 
-        // Secondary action row
-        val exploreCityBtn = TextView(this).apply {
-            text = "🌍  Explore ${place.cityQuery} guide & weather"
-            gravity = Gravity.CENTER
-            textSize = 14f
-            setTextColor(Color.WHITE)
-            setTypeface(typeface, Typeface.BOLD)
-            background = shape(blue, 14)
-            setPadding(dp(14), dp(14), dp(14), dp(14))
-            setOnClickListener {
-                startActivity(
-                    Intent(this@PlaceDetailActivity, CityExplorerActivity::class.java)
-                        .putExtra("city_query", place.cityQuery)
-                )
-            }
+        val plat = place.latitude
+        val plon = place.longitude
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        row.addView(Ui.button(this, "City guide & weather", R.drawable.ic_public, Color.WHITE, blue, 14) {
+            startActivity(Intent(this, CityExplorerActivity::class.java).putExtra("city_query", place.cityQuery))
+        }, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(6) })
+        if (plat != null && plon != null) {
+            row.addView(Ui.button(this, "Hotels nearby", R.drawable.ic_hotel, blue, 0xFFEAF3FF.toInt(), 14) {
+                HotelsActivity.open(this, plat, plon, place.name)
+            }, LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(6) })
         }
-        body.addView(exploreCityBtn, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) })
+        body.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(14) })
 
-        // Map & Wikipedia actions
-        val linksRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
+        // Google Map, in the app
+        if (plat != null && plon != null) {
+            body.addView(label("Location", 18, ink, true))
+            body.addView(
+                MapUi.inlineMap(this, plat, plon, "place", null, 230) {
+                    MapUi.openMap(this, plat, plon, place.name)
+                },
+                LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(14) }
+            )
         }
-        if (place.latitude != null && place.longitude != null) {
-            val mapBtn = TextView(this).apply {
-                text = "🗺 View on map"
-                gravity = Gravity.CENTER
-                textSize = 13.5f
-                setTextColor(blue)
-                setTypeface(typeface, Typeface.BOLD)
-                background = shape(0xFFEAF3FF.toInt(), 12)
-                setPadding(dp(12), dp(12), dp(12), dp(12))
-                setOnClickListener {
-                    startActivity(Intent(this@PlaceDetailActivity, MapActivity::class.java).putExtra("lat", place.latitude!!).putExtra("lon", place.longitude!!).putExtra("title", place.name))
-                }
-            }
-            linksRow.addView(mapBtn, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(6) })
-        }
-        if (!place.wikiUrl.isNullOrBlank()) {
-            val wikiBtn = TextView(this).apply {
-                text = "📖 Read guide"
-                gravity = Gravity.CENTER
-                textSize = 13.5f
-                setTextColor(blue)
-                setTypeface(typeface, Typeface.BOLD)
-                background = shape(0xFFEAF3FF.toInt(), 12)
-                setPadding(dp(12), dp(12), dp(12), dp(12))
-                setOnClickListener { openUrl(place.wikiUrl!!) }
-            }
-            linksRow.addView(wikiBtn, LinearLayout.LayoutParams(0, -2, 1f))
-        }
-        if (linksRow.childCount > 0) {
-            body.addView(linksRow, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(2) })
-        }
+
+        // Full information, shown here instead of sending people to Wikipedia
+        body.addView(label("In depth", 18, ink, true).apply { setPadding(0, dp(4), 0, dp(6)) })
+        articleBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        articleBox.addView(ProgressBar(this), LinearLayout.LayoutParams(-1, dp(56)))
+        body.addView(articleBox)
 
         setContentView(root)
+        Ui.edgeToEdge(this, root)
+        loadArticle()
+    }
+
+    private lateinit var articleBox: LinearLayout
+
+    private fun loadArticle() {
+        thread {
+            try {
+                val wikiRef = place.wikiUrl?.takeIf { GeoRepository.titleFromUrl(it) != null } ?: place.name
+                val article = GeoRepository.fetchArticle(wikiRef, "${place.name} ${place.cityQuery}")
+                runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
+                    articleBox.removeAllViews()
+                    ArticleUi.render(this, articleBox, article, showTitle = false)
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
+                    articleBox.removeAllViews()
+                    articleBox.addView(label("No extra write-up was found for this place. The summary above is what's available.", 13, muted))
+                    val site = place.wikiUrl?.takeIf { it.startsWith("http") && GeoRepository.titleFromUrl(it) == null }
+                    if (site != null) articleBox.addView(Ui.button(this, "Open website", R.drawable.ic_public, blue, 0xFFEAF3FF.toInt(), 14) {
+                        WebPageActivity.open(this, site, place.name)
+                    })
+                }
+            }
+        }
     }
 
     private fun fetchMorePhotos() {
@@ -342,10 +301,6 @@ class PlaceDetailActivity : AppCompatActivity() {
             prefs.edit().putString("saved_places", arr.toString()).apply()
         }
         Toast.makeText(this, "Saved ${p.name} to My Trips", Toast.LENGTH_SHORT).show()
-    }
-
-    private fun openUrl(url: String) {
-        runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
     }
 
     private inner class GalleryAdapter(private val urls: List<String>) :

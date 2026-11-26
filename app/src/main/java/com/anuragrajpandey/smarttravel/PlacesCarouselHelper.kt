@@ -282,12 +282,13 @@ class PlacesCarouselView(
                 setTypeface(typeface, Typeface.BOLD)
             }
             val locView = TextView(context).apply {
-                text = "📍 ${place.location}"
+                text = place.location
                 textSize = 12f
                 maxLines = 1
                 ellipsize = TextUtils.TruncateAt.END
                 setTextColor(0xFFDCEBFF.toInt())
                 setPadding(0, dp(2), 0, dp(4))
+                Ui.leadIcon(this, R.drawable.ic_place, 14, 0xFFDCEBFF.toInt())
             }
             val summaryView = TextView(context).apply {
                 text = place.summary
@@ -310,11 +311,11 @@ class PlacesCarouselView(
                     setColor(0x44FFFFFF)
                     cornerRadius = dp(10).toFloat()
                 }
-                setPadding(dp(11), dp(7), dp(11), dp(7))
+                setPadding(dp(11), dp(10), dp(11), dp(10))
                 setOnClickListener { onPlaceClick(place) }
             }
             val planBtn = TextView(context).apply {
-                text = "✈ Plan trip"
+                text = "Plan trip"
                 textSize = 12f
                 setTextColor(ink)
                 setTypeface(typeface, Typeface.BOLD)
@@ -322,7 +323,8 @@ class PlacesCarouselView(
                     setColor(gold)
                     cornerRadius = dp(10).toFloat()
                 }
-                setPadding(dp(12), dp(7), dp(12), dp(7))
+                setPadding(dp(12), dp(10), dp(12), dp(10))
+                Ui.leadIcon(this, R.drawable.ic_flight, 16, ink)
                 setOnClickListener { onPlanClick(place) }
             }
             actionsRow.addView(viewBtn, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = dp(8) })
@@ -396,7 +398,7 @@ object HiddenGemCardsHelper {
         banner.addView(scrim, FrameLayout.LayoutParams(-1, dp(72), Gravity.BOTTOM))
 
         val badge = TextView(context).apply {
-            text = "💎 ${place.category.uppercase(Locale.getDefault())}"
+            text = place.category.uppercase(Locale.getDefault())
             textSize = 9.5f
             setTextColor(Color.WHITE)
             setTypeface(typeface, Typeface.BOLD)
@@ -412,12 +414,13 @@ object HiddenGemCardsHelper {
         })
 
         val locOverlay = TextView(context).apply {
-            text = "📍 ${place.location}"
+            text = place.location
             textSize = 11f
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
             setTextColor(Color.WHITE)
             setTypeface(typeface, Typeface.BOLD)
+            Ui.leadIcon(this, R.drawable.ic_place, 13, Color.WHITE)
         }
         banner.addView(locOverlay, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM).apply {
             leftMargin = dp(12)
@@ -452,7 +455,7 @@ object HiddenGemCardsHelper {
             gravity = Gravity.CENTER_VERTICAL
         }
         val exploreBtn = TextView(context).apply {
-            text = "Explore →"
+            text = "Explore"
             textSize = 12f
             setTextColor(blue)
             setTypeface(typeface, Typeface.BOLD)
@@ -460,11 +463,11 @@ object HiddenGemCardsHelper {
                 setColor(0xFFEAF3FF.toInt())
                 cornerRadius = dp(10).toFloat()
             }
-            setPadding(dp(11), dp(7), dp(11), dp(7))
+            setPadding(dp(11), dp(10), dp(11), dp(10))
             setOnClickListener { onPlaceClick(place) }
         }
         val planBtn = TextView(context).apply {
-            text = "✈ Plan"
+            text = "Plan"
             textSize = 12f
             setTextColor(ink)
             setTypeface(typeface, Typeface.BOLD)
@@ -472,7 +475,8 @@ object HiddenGemCardsHelper {
                 setColor(gold)
                 cornerRadius = dp(10).toFloat()
             }
-            setPadding(dp(12), dp(7), dp(12), dp(7))
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            Ui.leadIcon(this, R.drawable.ic_flight, 16, ink)
             setOnClickListener { onPlanClick(place) }
         }
         actions.addView(exploreBtn, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = dp(8) })
