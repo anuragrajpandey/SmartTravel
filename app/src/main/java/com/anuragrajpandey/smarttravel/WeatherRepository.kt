@@ -18,12 +18,12 @@ data class WeatherReport(
 }
 
 object WeatherRepository {
-    fun fetch(lat: Double, lon: Double): WeatherReport {
+    fun fetch(lat: Double, lon: Double, forecastDays: Int = 8, pastDays: Int = 7): WeatherReport {
         val url = "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon" +
             "&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,weather_code,cloud_cover,pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m" +
             "&hourly=temperature_2m,weather_code,precipitation_probability,is_day,visibility" +
             "&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max,precipitation_probability_max,precipitation_sum" +
-            "&timezone=auto&past_days=7&forecast_days=8"
+            "&timezone=auto&past_days=$pastDays&forecast_days=$forecastDays"
         val json = JSONObject(CityDataRepository.get(url))
         val cur = json.getJSONObject("current")
         val h = json.getJSONObject("hourly")

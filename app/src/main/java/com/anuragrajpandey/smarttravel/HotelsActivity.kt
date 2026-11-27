@@ -21,7 +21,7 @@ import kotlin.concurrent.thread
 /** Best hotels around the user (or any searched city) with distance, stars, amenities and pricing. */
 class HotelsActivity : AppCompatActivity() {
     private lateinit var body: LinearLayout
-    private lateinit var searchBox: EditText
+    private lateinit var suggest: SuggestField
     private var lat = Double.NaN
     private var lon = Double.NaN
     private var label = ""
@@ -48,22 +48,10 @@ class HotelsActivity : AppCompatActivity() {
         val searchRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(16), dp(2), dp(10), dp(8))
+            setPadding(dp(16), dp(2), dp(16), dp(8))
         }
-        searchBox = EditText(this).apply {
-            hint = "Search hotels in another city"
-            setSingleLine(true)
-            textSize = 14.5f
-            setTextColor(Ui.FG)
-            setHintTextColor(Ui.MUTED)
-            background = Ui.shape(this@HotelsActivity, Color.WHITE, 14)
-            setPadding(dp(14), dp(10), dp(14), dp(10))
-            imeOptions = EditorInfo.IME_ACTION_SEARCH
-            setOnEditorActionListener { _, id, _ -> if (id == EditorInfo.IME_ACTION_SEARCH) { searchCity(); true } else false }
-        }
-        searchRow.addView(searchBox, LinearLayout.LayoutParams(0, dp(48), 1f))
-        searchRow.addView(Ui.iconButton(this, R.drawable.ic_search, Color.WHITE, Ui.ACCENT, 48, 22) { searchCity() },
-            LinearLayout.LayoutParams(dp(48), dp(48)).apply { leftMargin = dp(8) })
+        suggest = SuggestField(this, "Search hotels in another place in India", { pickPlace(it) }, { searchCity(it) })
+        searchRow.addView(suggest.view, LinearLayout.LayoutParams(0, -2, 1f))
         root.addView(searchRow)
 
         val scroll = ScrollView(this).apply { isVerticalScrollBarEnabled = false }
@@ -80,17 +68,21 @@ class HotelsActivity : AppCompatActivity() {
 
     private fun note(s: String) = Ui.text(this, s, 14f, Ui.MUTED).apply { setPadding(dp(4), dp(24), dp(4), dp(8)) }
 
-    private fun searchCity() {
-        val q = searchBox.text.toString().trim()
-        if (q.isBlank()) { searchBox.error = "Enter a city"; return }
+    private fun pickPlace(sug: Suggestion) {
+        lat = sug.lat; lon = sug.lon; label = sug.name; country = "India"; countryCode = "IN"
+        load()
+    }
+
+    private fun searchCity(q: String) {
+        if (q.isBlank()) { suggest.input.error = "Enter a place in India"; return }
         body.removeAllViews()
         body.addView(ProgressBar(this), LinearLayout.LayoutParams(-1, dp(70)).apply { topMargin = dp(60) })
-        thread {
+        Net.pool.execute {
             try {
                 val c = CityDataRepository.geocodeCity(q)
-                runOnUiThread { lat = c.latitude; lon = c.longitude; label = c.name; country = c.country; countryCode = ""; load() }
+                runOnUiThread { lat = c.latitude; lon = c.longitude; label = c.name; country = "India"; countryCode = "IN"; load() }
             } catch (e: Exception) {
-                runOnUiThread { body.removeAllViews(); body.addView(note(e.message ?: "City not found")) }
+                runOnUiThread { body.removeAllViews(); body.addView(note(e.message ?: "Place not found")) }
             }
         }
     }

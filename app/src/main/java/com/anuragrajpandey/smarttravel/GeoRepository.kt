@@ -21,11 +21,6 @@ data class Article(val title: String, val description: String, val imageUrl: Str
 /** Location-based lookups built on open data: Nominatim, Overpass (OSM) and Wikipedia. */
 object GeoRepository {
     private const val UA = "FlipDoor/1.1 (Android travel discovery app)"
-    private val overpassHosts = listOf(
-        "https://overpass-api.de/api/interpreter",
-        "https://overpass.kumi.systems/api/interpreter"
-    )
-
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
 
     fun haversineKm(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
@@ -58,29 +53,48 @@ object GeoRepository {
     }
 
     // ---------- Overpass ----------
-    fun overpass(query: String): JSONObject {
-        var last: Exception? = null
-        for (host in overpassHosts) {
-            try {
-                val c = URL(host).openConnection() as HttpURLConnection
-                c.requestMethod = "POST"
-                c.doOutput = true
-                c.connectTimeout = 10000
-                c.readTimeout = 30000
-                c.setRequestProperty("User-Agent", UA)
-                c.setRequestProperty("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
-                try {
-                    c.outputStream.use { it.write(("data=" + enc(query)).toByteArray(Charsets.UTF_8)) }
-                    if (c.responseCode !in 200..299) throw IllegalStateException("HTTP ${c.responseCode}")
-                    return JSONObject(c.inputStream.bufferedReader().use { it.readText() })
-                } finally {
-                    c.disconnect()
-                }
-            } catch (e: Exception) {
-                last = e
-            }
+    // Public Overpass servers are often busy, so all mirrors are queried in parallel and the first good answer wins.
+    private val overpassHosts = listOf(
+        "https://overpass-api.de/api/interpreter",
+        "https://overpass.kumi.systems/api/interpreter",
+        "https://overpass.private.coffee/api/interpreter",
+        "https://maps.mail.ru/osm/tools/overpass/api/interpreter"
+    )
+
+    private fun overpassOnce(host: String, query: String): JSONObject {
+        val key = "OP|$host|$query"
+        Net.cached(key, 30L * 60_000)?.let { return JSONObject(it) }
+        val c = URL(host).openConnection() as HttpURLConnection
+        c.requestMethod = "POST"
+        c.doOutput = true
+        c.connectTimeout = 7000
+        c.readTimeout = 16000
+        c.setRequestProperty("User-Agent", UA)
+        c.setRequestProperty("Accept", "application/json")
+        c.setRequestProperty("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
+        try {
+            c.outputStream.use { it.write(("data=" + enc(query)).toByteArray(Charsets.UTF_8)) }
+            if (c.responseCode !in 200..299) throw IllegalStateException("HTTP ${c.responseCode}")
+            val body = c.inputStream.bufferedReader().use { it.readText() }
+            val json = JSONObject(body)               // throws on HTML error pages
+            if (json.has("remark") && json.optJSONArray("elements")?.length() == 0) throw IllegalStateException("Server busy")
+            Net.put(key, body)
+            return json
+        } finally {
+            c.disconnect()
         }
-        throw last ?: IllegalStateException("Places service unavailable")
+    }
+
+    fun overpass(query: String): JSONObject {
+        val done = java.util.concurrent.ArrayBlockingQueue<Result<JSONObject>>(overpassHosts.size)
+        overpassHosts.forEach { host -> Net.pool.execute { done.offer(runCatching { overpassOnce(host, query) }) } }
+        var last: Throwable? = null
+        repeat(overpassHosts.size) {
+            val r = done.poll(18, java.util.concurrent.TimeUnit.SECONDS) ?: return@repeat
+            r.onSuccess { return it }
+            last = r.exceptionOrNull()
+        }
+        throw IllegalStateException("Map data service is busy (${last?.message ?: "timeout"})")
     }
 
     // ---------- Nearby areas ----------
@@ -224,6 +238,20 @@ object GeoRepository {
         return out
     }
 
+    /** Exact-title Wikipedia lead images for several place names in one request. Only returns images of the matching article. */
+    fun wikiImages(names: List<String>): Map<String, String> {
+        if (names.isEmpty()) return emptyMap()
+        val pages = wikiBatch(names)
+        val out = HashMap<String, String>()
+        for ((name, page) in pages) {
+            val extract = page.optString("extract")
+            if (extract.contains("may refer to", true)) continue
+            if (!ImageMatch.matches(page.optString("title"), name)) continue
+            thumb(page)?.let { out[name] = it }
+        }
+        return out
+    }
+
     // ---------- Full article text (shown in-app instead of sending people to Wikipedia) ----------
     fun titleFromUrl(url: String?): String? {
         if (url.isNullOrBlank() || !url.contains("wikipedia.org/wiki/")) return null
@@ -278,5 +306,26 @@ object GeoRepository {
         val url = "https://en.wikipedia.org/w/api.php?action=query&titles=${enc(title)}&redirects=1" +
             "&prop=extracts%7Cpageimages%7Cdescription%7Cinfo&explaintext=1&exsectionformat=wiki&piprop=thumbnail&pithumbsize=1000&inprop=url&format=json&formatversion=2"
         return JSONObject(CityDataRepository.get(url)).optJSONObject("query")?.optJSONArray("pages")?.optJSONObject(0)
+    }
+}
+
+/** Decides whether an image file/article title really refers to a given place. */
+object ImageMatch {
+    private val generic = setOf(
+        "the", "and", "temple", "mandir", "fort", "palace", "museum", "garden", "gardens", "park", "lake", "ghat",
+        "mahal", "national", "sanctuary", "road", "market", "tomb", "complex", "city", "old", "new", "shri", "sri", "file"
+    )
+
+    private fun norm(s: String) = java.text.Normalizer.normalize(s.lowercase(Locale.US), java.text.Normalizer.Form.NFD).replace(Regex("\\p{M}+"), "")
+
+    private fun tokens(s: String) = norm(s).split(Regex("[^a-z0-9]+")).filter { it.length >= 3 }
+
+    fun matches(title: String, placeName: String): Boolean {
+        val all = tokens(placeName)
+        if (all.isEmpty()) return false
+        val sig = all.filter { it !in generic }.ifEmpty { all }
+        val t = norm(title)
+        val hit = sig.count { t.contains(it) }
+        return hit >= kotlin.math.ceil(sig.size * 0.6).toInt().coerceAtLeast(1)
     }
 }

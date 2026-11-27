@@ -24,11 +24,6 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.widget.NestedScrollView
 import com.google.android.material.card.MaterialCardView
-import com.google.mlkit.common.model.DownloadConditions
-import com.google.mlkit.nl.translate.TranslateLanguage
-import com.google.mlkit.nl.translate.Translation
-import com.google.mlkit.nl.translate.Translator
-import com.google.mlkit.nl.translate.TranslatorOptions
 import org.json.JSONArray
 import java.util.Locale
 import kotlin.concurrent.thread
@@ -43,17 +38,20 @@ private const val BORDER = 0xFFE5EAF2.toInt()
 class MainActivity : AppCompatActivity() {
     private lateinit var content: LinearLayout
     private val prefs by lazy { getSharedPreferences("flipdoor", MODE_PRIVATE) }
-    private var translator: Translator? = null
     private var exploreGeneration = 0
     private var currentTab = "Explore"
+    private val backStack = ArrayDeque<String>()
 
     // Where the user is. Everything on Explore/Gems is built around this.
     private var meCity: CityLocation? = null
     private var meArea: String = ""
+    // Loaded content is kept so switching tabs is instant.
+    private var placesCache: List<MostVisitedPlace>? = null
+    private var areasCache: List<NearbyArea>? = null
+    private var foodCache: FoodBundle? = null
+    private var gemsCache: List<MostVisitedPlace>? = null
     private var locationState = "pending" // pending | locating | denied | unavailable | ready
 
-    private val langs = listOf("English", "Hindi", "Spanish", "French", "German", "Japanese", "Korean", "Arabic", "Portuguese", "Russian", "Chinese")
-    private val tags = listOf("en", "hi", "es", "fr", "de", "ja", "ko", "ar", "pt", "ru", "zh")
 
     private val permLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { res ->
         if (res.values.any { it }) resolveLocation() else { locationState = "denied"; refreshLocationTabs() }
@@ -61,6 +59,16 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Back goes to the previous screen, then to Explore, and only then leaves the app.
+        onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                when {
+                    backStack.isNotEmpty() -> show(backStack.removeLast())
+                    currentTab != "Explore" -> show("Explore")
+                    else -> { isEnabled = false; onBackPressedDispatcher.onBackPressed() }
+                }
+            }
+        })
         show("Explore")
         // Ask for the user's location as soon as the app launches.
         if (LocationHelper.hasPermission(this)) resolveLocation() else permLauncher.launch(LocationHelper.PERMISSIONS)
@@ -73,7 +81,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        translator?.close()
         super.onDestroy()
     }
 
@@ -92,6 +99,7 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread {
                     if (isFinishing || isDestroyed) return@runOnUiThread
                     meCity = rr.city
+                    placesCache = null; areasCache = null; foodCache = null; gemsCache = null
                     meArea = rr.area
                     locationState = "ready"
                     refreshLocationTabs()
@@ -101,7 +109,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refreshLocationTabs() {
-        if (currentTab == "Explore" || currentTab == "Gems") show(currentTab)
+        if (currentTab == "Explore" || currentTab == "Gems" || currentTab == "Food") show(currentTab)
     }
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
@@ -182,6 +190,12 @@ class MainActivity : AppCompatActivity() {
         content.addView(c, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) })
     }
 
+    /** Opens a sub-screen that Back returns from. */
+    private fun go(screen: String) {
+        backStack.addLast(currentTab)
+        show(screen)
+    }
+
     private fun show(tab: String) {
         exploreGeneration++
         currentTab = tab
@@ -211,7 +225,7 @@ class MainActivity : AppCompatActivity() {
                 "Tools" -> R.drawable.ic_build
                 else -> R.drawable.ic_favorite
             }
-            val selected = n == tab
+            val selected = n == when (tab) { "Food" -> "Explore"; "Budget" -> "Tools"; else -> tab }
             val v = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
@@ -219,7 +233,7 @@ class MainActivity : AppCompatActivity() {
                 background = Ui.ripple(this@MainActivity, if (selected) 0xFFEAF3FF.toInt() else Color.TRANSPARENT, 16)
                 setPadding(dp(4), dp(8), dp(4), dp(8))
                 isClickable = true
-                setOnClickListener { if (n == "Hotels") openHotels() else show(n) }
+                setOnClickListener { if (n == "Hotels") openHotels() else { backStack.clear(); show(n) } }
             }
             v.addView(Ui.iconView(this, icon, if (selected) ACCENT else MUTED), Ui.iconLp(this, 26))
             v.addView(TextView(this).apply {
@@ -245,6 +259,8 @@ class MainActivity : AppCompatActivity() {
             "Explore" -> explore()
             "Gems" -> discover()
             "Tools" -> tools()
+            "Food" -> food()
+            "Budget" -> budget()
             else -> trips()
         }
     }
@@ -262,6 +278,16 @@ class MainActivity : AppCompatActivity() {
             Intent(this, TripPlannerActivity::class.java)
                 .putExtra("destination", destinationName)
                 .putExtra("trip_name", "Trip to $destinationName")
+        )
+    }
+
+    private fun openTranslator() = startActivity(Intent(this, TranslatorActivity::class.java))
+
+    private fun openArea(sug: Suggestion) {
+        startActivity(
+            Intent(this, CityExplorerActivity::class.java)
+                .putExtra("city_query", sug.name).putExtra("lat", sug.lat).putExtra("lon", sug.lon)
+                .putExtra("region", sug.state).putExtra("country", "India")
         )
     }
 
@@ -331,23 +357,11 @@ class MainActivity : AppCompatActivity() {
             setPadding(dp(18), dp(16), dp(18), dp(16))
         }
         hero.addView(txt("Planning somewhere else?", 18, Color.WHITE, true))
-        val input = EditText(this).apply {
-            hint = "Search any city, e.g. Jaipur, Paris"
-            setSingleLine(true)
-            imeOptions = EditorInfo.IME_ACTION_SEARCH
-            setHintTextColor(MUTED)
-            setTextColor(FG)
-            textSize = 14.5f
-            background = shape(Color.WHITE, 12)
-            setPadding(dp(14), dp(12), dp(14), dp(12))
-            setOnEditorActionListener { _, id, _ ->
-                if (id == EditorInfo.IME_ACTION_SEARCH) { text.toString().trim().takeIf { it.isNotEmpty() }?.let { openCityGuide(it) }; true } else false
-            }
-        }
-        hero.addView(input, LinearLayout.LayoutParams(-1, dp(50)).apply { topMargin = dp(10) })
+        val field = SuggestField(this, "Search any place in India", { openArea(it) }, { q -> if (q.isNotEmpty()) openCityGuide(q) })
+        hero.addView(field.view, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
         hero.addView(Ui.button(this, "Search", R.drawable.ic_search, FG, Ui.GOLD, 12) {
-            val q = input.text.toString().trim()
-            if (q.isNotEmpty()) openCityGuide(q) else input.error = "Enter a city or place"
+            val q = field.text()
+            if (q.isNotEmpty()) openCityGuide(q) else field.input.error = "Enter a place in India"
         }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
         content.addView(hero, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(14) })
     }
@@ -357,13 +371,13 @@ class MainActivity : AppCompatActivity() {
         val row1 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         content.addView(row1)
         featureCard(row1, R.drawable.ic_hotel, "Hotels", "Best stays & prices", 0xFFEAF3FF.toInt()) { openHotels() }
-        featureCard(row1, R.drawable.ic_restaurant, "Local food", "Famous in your state", 0xFFFFF2E6.toInt()) { food() }
+        featureCard(row1, R.drawable.ic_restaurant, "Local food", "Famous in your state", 0xFFFFF2E6.toInt()) { go("Food") }
         val row2 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         content.addView(row2)
         featureCard(row2, R.drawable.ic_luggage, "Trip planner", "Dates & full budget", 0xFFEAF8F0.toInt()) {
             startActivity(Intent(this, TripPlannerActivity::class.java))
         }
-        featureCard(row2, R.drawable.ic_public, "Translator", "Offline language packs", 0xFFF2EDFF.toInt()) { translate() }
+        featureCard(row2, R.drawable.ic_public, "Translator", "Online · 27 languages", 0xFFF2EDFF.toInt()) { openTranslator() }
         section("Travel essentials")
         tile("Weather", "Live conditions, hourly and 15-day forecast", R.drawable.ic_sun) { weather() }
         tile("Map", "Google Maps around you, right here in the app", R.drawable.ic_map) { openMap() }
@@ -391,7 +405,7 @@ class MainActivity : AppCompatActivity() {
         val carousel = PlacesCarouselView(this, { openPlaceDetail(it) }, { openTripPlanner(it.name) })
         content.addView(carousel.container, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(6) })
         thread {
-            val items = runCatching { CityDataRepository.mostVisitedFor(c) }.getOrDefault(emptyList())
+            val items = placesCache ?: runCatching { CityDataRepository.mostVisitedFor(c) }.getOrDefault(emptyList()).also { if (it.isNotEmpty()) placesCache = it }
             runOnUiThread {
                 if (isFinishing || isDestroyed || gen != exploreGeneration) return@runOnUiThread
                 loading.visibility = View.GONE
@@ -405,7 +419,7 @@ class MainActivity : AppCompatActivity() {
         content.addView(areasHolder)
         areasHolder.addView(loadingRow("Finding areas near you…"))
         thread {
-            val areas = runCatching { GeoRepository.nearbyAreas(c.latitude, c.longitude) }.getOrDefault(emptyList())
+            val areas = areasCache ?: runCatching { GeoRepository.nearbyAreas(c.latitude, c.longitude) }.getOrDefault(emptyList()).also { if (it.isNotEmpty()) areasCache = it }
             runOnUiThread {
                 if (isFinishing || isDestroyed || gen != exploreGeneration) return@runOnUiThread
                 areasHolder.removeAllViews()
@@ -420,7 +434,7 @@ class MainActivity : AppCompatActivity() {
         val foodHolder = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         content.addView(foodHolder)
         thread {
-            val bundle = runCatching { GeoRepository.regionFoods(c.region, c.country) }.getOrDefault(FoodBundle("", emptyList()))
+            val bundle = foodCache ?: runCatching { GeoRepository.regionFoods(c.region, c.country) }.getOrDefault(FoodBundle("", emptyList())).also { if (it.items.isNotEmpty()) foodCache = it }
             runOnUiThread {
                 if (isFinishing || isDestroyed || gen != exploreGeneration || bundle.items.isEmpty()) return@runOnUiThread
                 foodHolder.addView(txt("Famous food in ${bundle.region}", 19, FG, true), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(20) })
@@ -437,7 +451,7 @@ class MainActivity : AppCompatActivity() {
         val gemHolder = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         content.addView(gemHolder)
         thread {
-            val gems = runCatching { CityDataRepository.hiddenGemsFor(c) }.getOrDefault(emptyList())
+            val gems = gemsCache ?: runCatching { CityDataRepository.hiddenGemsFor(c) }.getOrDefault(emptyList()).also { if (it.isNotEmpty()) gemsCache = it }
             runOnUiThread {
                 if (isFinishing || isDestroyed || gen != exploreGeneration || gems.isEmpty()) return@runOnUiThread
                 gemHolder.addView(txt("Hidden gems nearby", 19, FG, true), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(20) })
@@ -499,7 +513,7 @@ class MainActivity : AppCompatActivity() {
         val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         content.addView(list)
         thread {
-            val gems = runCatching { CityDataRepository.hiddenGemsFor(c) }.getOrDefault(emptyList())
+            val gems = gemsCache ?: runCatching { CityDataRepository.hiddenGemsFor(c) }.getOrDefault(emptyList()).also { if (it.isNotEmpty()) gemsCache = it }
             runOnUiThread {
                 if (isFinishing || isDestroyed || gen != exploreGeneration) return@runOnUiThread
                 loading.visibility = View.GONE
@@ -523,7 +537,7 @@ class MainActivity : AppCompatActivity() {
         val loading = loadingRow("Finding famous food in ${c.region.ifBlank { c.name }}…")
         content.addView(loading)
         thread {
-            val bundle = runCatching { GeoRepository.regionFoods(c.region, c.country) }.getOrDefault(FoodBundle("", emptyList()))
+            val bundle = foodCache ?: runCatching { GeoRepository.regionFoods(c.region, c.country) }.getOrDefault(FoodBundle("", emptyList())).also { if (it.items.isNotEmpty()) foodCache = it }
             runOnUiThread {
                 if (isFinishing || isDestroyed || gen != exploreGeneration) return@runOnUiThread
                 loading.visibility = View.GONE
@@ -544,8 +558,8 @@ class MainActivity : AppCompatActivity() {
         tile("Trip planner", "Plan dates, travellers and a full trip budget", R.drawable.ic_luggage) {
             startActivity(Intent(this, TripPlannerActivity::class.java))
         }
-        tile("Trip budget", "Quick cost calculator", R.drawable.ic_wallet) { budget() }
-        tile("Translator", "Downloadable offline language models", R.drawable.ic_public) { translate() }
+        tile("Trip budget", "Quick cost calculator", R.drawable.ic_wallet) { go("Budget") }
+        tile("Translator", "Instant online translation, no downloads", R.drawable.ic_public) { openTranslator() }
     }
 
     private fun budget() {
@@ -572,55 +586,6 @@ class MainActivity : AppCompatActivity() {
                 "\nPer traveller: ₹" + "%,.0f".format(Locale("en", "IN"), total / people)
             prefs.edit().putLong("budget", total.toLong()).apply()
         }, LinearLayout.LayoutParams(-1, dp(50)))
-    }
-
-    private fun translate() {
-        content.removeAllViews()
-        heading("TRANSLATOR", "Words open doors.", "Download a language model once, then translate offline.")
-        val a = Spinner(this)
-        val b = Spinner(this)
-        val ad = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, langs)
-        a.adapter = ad
-        b.adapter = ad
-        b.setSelection(1)
-        section("From")
-        content.addView(a)
-        section("Translate to")
-        content.addView(b)
-        val src = EditText(this).apply {
-            hint = "Type a phrase"
-            setHintTextColor(MUTED)
-            setTextColor(Color.WHITE)
-            minLines = 3
-            background = shape(0xFF22252A.toInt())
-            setPadding(dp(12), dp(10), dp(12), dp(10))
-        }
-        content.addView(src)
-        val status = txt("First use downloads the selected language model.", 12, MUTED)
-        content.addView(status)
-        val out = txt("Translation appears here.", 16, FG)
-        content.addView(out)
-        content.addView(btn("Download language & translate", true) {
-            val from = TranslateLanguage.fromLanguageTag(tags[a.selectedItemPosition])
-            val to = TranslateLanguage.fromLanguageTag(tags[b.selectedItemPosition])
-            val phrase = src.text.toString().trim()
-            if (from == null || to == null || from == to || phrase.isBlank()) {
-                status.text = "Choose different languages and enter a phrase."
-                return@btn
-            }
-            status.text = "Downloading language pack…"
-            translator?.close()
-            translator = Translation.getClient(TranslatorOptions.Builder().setSourceLanguage(from).setTargetLanguage(to).build())
-            translator?.downloadModelIfNeeded(DownloadConditions.Builder().build())
-                ?.addOnSuccessListener {
-                    status.text = "Pack ready. Translation runs on-device."
-                    translator?.translate(phrase)
-                        ?.addOnSuccessListener { out.text = it }
-                        ?.addOnFailureListener { status.text = "Translation failed." }
-                }
-                ?.addOnFailureListener { status.text = "Download failed. Check internet." }
-        }, LinearLayout.LayoutParams(-1, dp(52)))
-        content.addView(txt("After download, supported language pairs translate without internet. Model availability varies.", 12, MUTED))
     }
 
     private fun trips() {

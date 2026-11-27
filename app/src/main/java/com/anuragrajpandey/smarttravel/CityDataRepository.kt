@@ -85,15 +85,18 @@ object CityDataRepository {
     )
 
     internal fun get(url: String): String {
+        val ttl = if (url.contains("api.open-meteo.com/v1/forecast")) 10L * 60_000 else 6L * 3_600_000
+        Net.cached(url, ttl)?.let { return it }
         val connection = URL(url).openConnection() as HttpURLConnection
-        connection.connectTimeout = 12000
-        connection.readTimeout = 18000
-        connection.setRequestProperty("User-Agent", "FlipDoor/1.0 (Android travel discovery app)")
+        connection.connectTimeout = 8000
+        connection.readTimeout = 14000
+        connection.setRequestProperty("User-Agent", "FlipDoor/1.1 (Android travel discovery app)")
         return try {
             val code = connection.responseCode
             val stream = if (code in 200..299) connection.inputStream else connection.errorStream
             val body = stream.bufferedReader().use { it.readText() }
             if (code !in 200..299) throw IllegalStateException("Service returned HTTP $code")
+            Net.put(url, body)
             body
         } finally {
             connection.disconnect()
@@ -104,11 +107,11 @@ object CityDataRepository {
 
     fun geocodeCity(query: String): CityLocation {
         require(query.isNotBlank()) { "Enter a city name to search." }
-        val geo = JSONObject(get("https://geocoding-api.open-meteo.com/v1/search?name=${enc(query.trim())}&count=5&language=en&format=json"))
+        val geo = JSONObject(get("https://geocoding-api.open-meteo.com/v1/search?name=${enc(query.trim())}&count=5&language=en&countryCode=IN&format=json"))
         val results = geo.optJSONArray("results")
-            ?: throw IllegalStateException("No matching location found. Try adding its state or country.")
+            ?: throw IllegalStateException("No Indian place found with that name. Pick a suggestion from the list or add the state.")
         if (results.length() == 0) {
-            throw IllegalStateException("No matching location found. Try another spelling or add the country.")
+            throw IllegalStateException("No Indian place found with that name. Try another spelling or pick a suggestion.")
         }
         val item = results.getJSONObject(0)
         return CityLocation(
@@ -131,7 +134,7 @@ object CityDataRepository {
         var mostVisited: List<MostVisitedPlace> = emptyList()
         var photos: List<String> = emptyList()
 
-        val latch = CountDownLatch(6)
+        val latch = CountDownLatch(7)
         Thread {
             foodBundle = runCatching { GeoRepository.regionFoods(city.region, city.country) }.getOrDefault(FoodBundle("", emptyList()))
             latch.countDown()
@@ -153,11 +156,11 @@ object CityDataRepository {
             latch.countDown()
         }.start()
         Thread {
-            val fetched = runCatching { loadMostVisitedAndPhotos(city) }.getOrNull()
-            if (fetched != null) {
-                mostVisited = fetched.first
-                photos = fetched.second
-            }
+            mostVisited = runCatching { loadMostVisited(city) }.getOrDefault(emptyList())
+            latch.countDown()
+        }.start()
+        Thread {
+            photos = runCatching { searchCommonsPhotos("${city.name} ${city.country}", 10, city.name) }.getOrDefault(emptyList())
             latch.countDown()
         }.start()
         latch.await()
@@ -166,10 +169,10 @@ object CityDataRepository {
         val finalMostVisited = if (mostVisited.isNotEmpty()) {
             mostVisited
         } else {
-            buildFallbackMostVisited(city, attractions, photos)
+            buildFallbackMostVisited(city, attractions)
         }
         val hiddenGems = runCatching {
-            deriveCityHiddenGems(city, finalMostVisited, places, photos)
+            deriveCityHiddenGems(city, finalMostVisited, places)
         }.getOrDefault(emptyList())
 
         return CityGuide(
@@ -193,9 +196,9 @@ object CityDataRepository {
 
     fun fetchHiddenGemsForLocation(query: String): Pair<CityLocation, List<MostVisitedPlace>> {
         val city = geocodeCity(query)
-        val (mostVisited, photos) = loadMostVisitedAndPhotos(city)
+        val mostVisited = loadMostVisited(city)
         val osmPlaces = runCatching { loadPlaces(city) }.getOrDefault(emptyList())
-        val gems = deriveCityHiddenGems(city, mostVisited, osmPlaces, photos)
+        val gems = deriveCityHiddenGems(city, mostVisited, osmPlaces)
         return city to gems
     }
 
@@ -218,7 +221,7 @@ object CityDataRepository {
             val titlesParam = seeds.joinToString("|") { it.wikiTitle.replace("_", " ") }
             val url = "https://en.wikipedia.org/w/api.php?action=query&titles=${enc(titlesParam)}" +
                 "&prop=pageimages%7Cextracts%7Cdescription%7Ccoordinates%7Cinfo" +
-                "&piprop=thumbnail&pithumbsize=900&pilimit=30&exintro=1&explaintext=1&exsentences=2&exlimit=20&colimit=30&inprop=url&redirects=1&format=json&formatversion=2"
+                "&piprop=thumbnail&pithumbsize=640&pilimit=30&exintro=1&explaintext=1&exsentences=2&exlimit=20&colimit=30&inprop=url&redirects=1&format=json&formatversion=2"
             val root = JSONObject(get(url))
             val queryObj = root.optJSONObject("query") ?: return@runCatching defaults
             val redirectMap = mutableMapOf<String, String>()
@@ -269,8 +272,7 @@ object CityDataRepository {
     private fun deriveCityHiddenGems(
         city: CityLocation,
         mostVisited: List<MostVisitedPlace>,
-        osmPlaces: List<CityPlace>,
-        cityPhotos: List<String>
+        osmPlaces: List<CityPlace>
     ): List<MostVisitedPlace> {
         val locationLabel = listOf(city.region, city.country).filter { it.isNotBlank() }.joinToString(", ").ifBlank { city.name }
         val existingNames = mostVisited.map { it.name.lowercase(Locale.US).trim() }.toMutableSet()
@@ -279,11 +281,11 @@ object CityDataRepository {
         val offbeatQuery = "${city.name} ${city.country} hidden gems offbeat viewpoints waterfalls caves villages".trim()
         val offbeatUrl = "https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${enc(offbeatQuery)}&gsrlimit=15" +
             "&prop=pageimages%7Cextracts%7Cdescription%7Ccoordinates%7Cinfo" +
-            "&piprop=thumbnail&pithumbsize=900&pilimit=15&exintro=1&explaintext=1&exsentences=3&exlimit=15&colimit=15&inprop=url&format=json&formatversion=2"
+            "&piprop=thumbnail&pithumbsize=640&pilimit=15&exintro=1&explaintext=1&exsentences=3&exlimit=15&colimit=15&inprop=url&format=json&formatversion=2"
         val geoExtraUrl = "https://en.wikipedia.org/w/api.php?action=query&generator=geosearch" +
             "&ggscoord=${city.latitude}%7C${city.longitude}&ggsradius=10000&ggslimit=40" +
             "&prop=pageimages%7Cextracts%7Cdescription%7Ccoordinates%7Cinfo" +
-            "&piprop=thumbnail&pithumbsize=900&pilimit=40&exintro=1&explaintext=1&exsentences=2&exlimit=20&colimit=40&inprop=url&format=json&formatversion=2"
+            "&piprop=thumbnail&pithumbsize=640&pilimit=40&exintro=1&explaintext=1&exsentences=2&exlimit=20&colimit=40&inprop=url&format=json&formatversion=2"
 
         val candidates = mutableListOf<MostVisitedPlace>()
         runCatching { parseWikiPlacePages(JSONObject(get(offbeatUrl)), locationLabel, city.name) }
@@ -325,38 +327,35 @@ object CityDataRepository {
         val ranked = deduped.values
             .sortedByDescending { (if (it.imageUrl != null) 100 else 0) + (if (it.summary.length > 40) 20 else 0) }
             .take(8)
-            .mapIndexed { idx, p ->
-                val img = p.imageUrl ?: cityPhotos.getOrNull(idx % maxOf(cityPhotos.size, 1))
-                p.copy(imageUrl = img, galleryUrls = (listOfNotNull(img) + cityPhotos.take(4)).distinct())
-            }
-        return ranked
+            .toList()
+        return resolveImages(ranked, city.name)
     }
 
     fun fetchMostVisitedForLocation(query: String): Pair<CityLocation, List<MostVisitedPlace>> {
         val city = geocodeCity(query)
-        val (places, photos) = loadMostVisitedAndPhotos(city)
+        val places = loadMostVisited(city)
         val result = if (places.isNotEmpty()) {
             places
         } else {
             val osmAttractions = runCatching { loadPlaces(city).filter { it.type == "Attraction" } }.getOrDefault(emptyList())
-            buildFallbackMostVisited(city, osmAttractions, photos)
+            buildFallbackMostVisited(city, osmAttractions)
         }
         return city to result
     }
 
     /** Most-visited places around an exact point (used for the user's current location). */
     fun mostVisitedFor(city: CityLocation): List<MostVisitedPlace> {
-        val (places, photos) = loadMostVisitedAndPhotos(city)
+        val places = loadMostVisited(city)
         if (places.isNotEmpty()) return places
         val osm = runCatching { loadPlaces(city).filter { it.type == "Attraction" } }.getOrDefault(emptyList())
-        return buildFallbackMostVisited(city, osm, photos)
+        return buildFallbackMostVisited(city, osm)
     }
 
     /** Offbeat spots around an exact point. */
     fun hiddenGemsFor(city: CityLocation): List<MostVisitedPlace> {
-        val (visited, photos) = loadMostVisitedAndPhotos(city)
+        val visited = loadMostVisited(city)
         val osm = runCatching { loadPlaces(city) }.getOrDefault(emptyList())
-        return deriveCityHiddenGems(city, visited, osm, photos)
+        return deriveCityHiddenGems(city, visited, osm)
     }
 
     fun fetchPlaceGallery(placeName: String, locationHint: String): List<String> {
@@ -366,67 +365,56 @@ object CityDataRepository {
             placeName.trim()
         ).distinct().filter { it.isNotBlank() }
         for (q in queries) {
-            val found = runCatching { searchCommonsPhotos(q, 8) }.getOrDefault(emptyList())
+            val found = runCatching { searchCommonsPhotos(q, 8, placeName) }.getOrDefault(emptyList())
             found.forEach { url -> if (url !in combined) combined.add(url) }
             if (combined.size >= 6) break
         }
         return combined.take(8)
     }
 
-    private fun loadMostVisitedAndPhotos(city: CityLocation): Pair<List<MostVisitedPlace>, List<String>> {
+    private val visitedCache = android.util.LruCache<String, List<MostVisitedPlace>>(24)
+
+    /** Most-visited places for a point. Every image shown belongs to that exact place (or is left empty). */
+    @Synchronized
+    private fun loadMostVisited(city: CityLocation): List<MostVisitedPlace> {
+        val key = String.format(Locale.US, "%.3f,%.3f", city.latitude, city.longitude)
+        visitedCache.get(key)?.let { return it }
         val locationLabel = listOf(city.region, city.country).filter { it.isNotBlank() }.joinToString(", ")
-        var geoPlaces: List<MostVisitedPlace> = emptyList()
-        var searchPlaces: List<MostVisitedPlace> = emptyList()
-        var commonsPhotos: List<String> = emptyList()
-
-        val latch = CountDownLatch(3)
-        Thread {
-            geoPlaces = runCatching { fetchWikiGeoPlaces(city, locationLabel) }.getOrDefault(emptyList())
-            latch.countDown()
-        }.start()
-        Thread {
-            searchPlaces = runCatching { fetchWikiSearchPlaces(city, locationLabel) }.getOrDefault(emptyList())
-            latch.countDown()
-        }.start()
-        Thread {
-            val primary = runCatching { searchCommonsPhotos("${city.name} ${city.country}", 10) }.getOrDefault(emptyList())
-            val secondary = if (primary.size < 4) {
-                runCatching { searchCommonsPhotos(city.name, 8) }.getOrDefault(emptyList())
-            } else {
-                emptyList()
-            }
-            commonsPhotos = (primary + secondary).distinct().take(10)
-            latch.countDown()
-        }.start()
-        latch.await()
-
+        val geoF = Net.async { runCatching { fetchWikiGeoPlaces(city, locationLabel) }.getOrDefault(emptyList()) }
+        val searchF = Net.async { runCatching { fetchWikiSearchPlaces(city, locationLabel) }.getOrDefault(emptyList()) }
         val merged = LinkedHashMap<String, MostVisitedPlace>()
-        fun addAll(items: List<MostVisitedPlace>) {
+        for (items in listOf(Net.await(geoF, 14000, emptyList()), Net.await(searchF, 14000, emptyList()))) {
             for (p in items) {
-                val key = p.name.lowercase(Locale.US).trim()
-                val existing = merged[key]
-                if (existing == null) {
-                    merged[key] = p
-                } else if (existing.imageUrl == null && p.imageUrl != null) {
-                    merged[key] = p
-                }
+                val k = p.name.lowercase(Locale.US).trim()
+                val existing = merged[k]
+                if (existing == null || (existing.imageUrl == null && p.imageUrl != null)) merged[k] = p
             }
         }
-        addAll(geoPlaces)
-        addAll(searchPlaces)
-
         val sorted = merged.values
             .filter { !it.name.equals(city.name, ignoreCase = true) || merged.size <= 3 }
             .sortedByDescending { scorePlace(it, city.name) }
             .take(10)
-            .mapIndexed { idx, place ->
-                val primaryImg = place.imageUrl ?: commonsPhotos.getOrNull(idx % maxOf(commonsPhotos.size, 1))
-                val gallery = (listOfNotNull(primaryImg) + commonsPhotos.take(4)).distinct()
-                place.copy(imageUrl = primaryImg, galleryUrls = gallery)
-            }
+        val result = resolveImages(sorted, city.name)
+        if (result.isNotEmpty()) visitedCache.put(key, result)
+        return result
+    }
 
-        val allPhotos = (sorted.mapNotNull { it.imageUrl } + commonsPhotos).distinct().take(12)
-        return sorted to allPhotos
+    /**
+     * Fills in photos that belong to the place itself:
+     * 1) the place's own Wikipedia article image, 2) Commons files whose title names the place.
+     * Nothing generic or shared with other places is ever used.
+     */
+    private fun resolveImages(places: List<MostVisitedPlace>, cityName: String): List<MostVisitedPlace> {
+        val need = places.filter { it.imageUrl == null }
+        val byTitle = if (need.isEmpty()) emptyMap() else runCatching { GeoRepository.wikiImages(need.map { it.name }) }.getOrDefault(emptyMap())
+        val futures = need.filter { byTitle[it.name] == null }.map { p ->
+            p.name to Net.async { runCatching { searchCommonsPhotos("${p.name} $cityName", 6, p.name) }.getOrDefault(emptyList()) }
+        }
+        val commons = futures.associate { (n, f) -> n to Net.await(f, 9000, emptyList<String>()) }
+        return places.map { p ->
+            val img = p.imageUrl ?: byTitle[p.name] ?: commons[p.name]?.firstOrNull()
+            p.copy(imageUrl = img, galleryUrls = (listOfNotNull(img) + (commons[p.name]?.take(4) ?: emptyList())).distinct())
+        }
     }
 
     private fun scorePlace(place: MostVisitedPlace, cityName: String): Int {
@@ -442,7 +430,7 @@ object CityDataRepository {
         val url = "https://en.wikipedia.org/w/api.php?action=query&generator=geosearch" +
             "&ggscoord=${city.latitude}%7C${city.longitude}&ggsradius=10000&ggslimit=25" +
             "&prop=pageimages%7Cextracts%7Cdescription%7Ccoordinates%7Cinfo" +
-            "&piprop=thumbnail&pithumbsize=900&pilimit=25&exintro=1&explaintext=1&exsentences=3&exlimit=20&colimit=25&inprop=url&format=json&formatversion=2"
+            "&piprop=thumbnail&pithumbsize=640&pilimit=25&exintro=1&explaintext=1&exsentences=3&exlimit=20&colimit=25&inprop=url&format=json&formatversion=2"
         return parseWikiPlacePages(JSONObject(get(url)), locationLabel, city.name)
     }
 
@@ -450,12 +438,12 @@ object CityDataRepository {
         val q = "${city.name} ${city.country} tourist attractions landmarks".trim()
         val url = "https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${enc(q)}&gsrlimit=15" +
             "&prop=pageimages%7Cextracts%7Cdescription%7Ccoordinates%7Cinfo" +
-            "&piprop=thumbnail&pithumbsize=900&pilimit=15&exintro=1&explaintext=1&exsentences=3&exlimit=20&colimit=15&inprop=url&format=json&formatversion=2"
+            "&piprop=thumbnail&pithumbsize=640&pilimit=15&exintro=1&explaintext=1&exsentences=3&exlimit=20&colimit=15&inprop=url&format=json&formatversion=2"
         val first = parseWikiPlacePages(JSONObject(get(url)), locationLabel, city.name)
         if (first.count { it.imageUrl != null } >= 4) return first
         val fallbackUrl = "https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${enc("${city.name} ${city.region}".trim())}&gsrlimit=12" +
             "&prop=pageimages%7Cextracts%7Cdescription%7Ccoordinates%7Cinfo" +
-            "&piprop=thumbnail&pithumbsize=900&pilimit=12&exintro=1&explaintext=1&exsentences=3&exlimit=20&colimit=12&inprop=url&format=json&formatversion=2"
+            "&piprop=thumbnail&pithumbsize=640&pilimit=12&exintro=1&explaintext=1&exsentences=3&exlimit=20&colimit=12&inprop=url&format=json&formatversion=2"
         val second = runCatching { parseWikiPlacePages(JSONObject(get(fallbackUrl)), locationLabel, city.name) }.getOrDefault(emptyList())
         return first + second
     }
@@ -498,9 +486,9 @@ object CityDataRepository {
         return result
     }
 
-    private fun searchCommonsPhotos(query: String, limit: Int): List<String> {
+    private fun searchCommonsPhotos(query: String, limit: Int, mustMatch: String? = null): List<String> {
         val url = "https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrnamespace=6" +
-            "&gsrsearch=${enc(query)}&gsrlimit=$limit&prop=imageinfo&iiprop=url%7Cmime&iiurlwidth=900&format=json&formatversion=2"
+            "&gsrsearch=${enc(query)}&gsrlimit=${if (mustMatch != null) limit * 3 else limit}&prop=imageinfo&iiprop=url%7Cmime&iiurlwidth=800&format=json&formatversion=2"
         val pages = JSONObject(get(url)).optJSONObject("query")?.optJSONArray("pages") ?: return emptyList()
         val photos = mutableListOf<String>()
         for (i in 0 until pages.length()) {
@@ -510,62 +498,33 @@ object CityDataRepository {
             val mime = info.optString("mime", "").lowercase(Locale.US)
             if (mime !in listOf("image/jpeg", "image/png", "image/webp")) continue
             val thumb = info.optString("thumburl").ifBlank { info.optString("url") }
-            if (isUsefulImageUrl(thumb, title)) {
+            if (isUsefulImageUrl(thumb, title) && (mustMatch == null || ImageMatch.matches(title, mustMatch))) {
                 photos.add(thumb)
             }
         }
-        return photos.distinct()
+        return photos.distinct().take(limit)
     }
 
-    private fun buildFallbackMostVisited(city: CityLocation, attractions: List<CityPlace>, photos: List<String>): List<MostVisitedPlace> {
+    private fun buildFallbackMostVisited(city: CityLocation, attractions: List<CityPlace>): List<MostVisitedPlace> {
         val loc = listOf(city.region, city.country).filter { it.isNotBlank() }.joinToString(", ").ifBlank { city.name }
+        val wiki = "https://en.wikipedia.org/wiki/" + enc(city.name).replace("+", "_")
         if (attractions.isNotEmpty()) {
-            return attractions.take(8).mapIndexed { i, attr ->
-                val img = photos.getOrNull(i % maxOf(photos.size, 1))
+            return resolveImages(attractions.take(8).map { attr ->
                 MostVisitedPlace(
-                    name = attr.name,
-                    location = loc,
-                    category = "Local Attraction",
-                    summary = attr.detail,
-                    imageUrl = img,
-                    galleryUrls = (listOfNotNull(img) + photos.take(4)).distinct(),
-                    wikiUrl = attr.website,
-                    latitude = attr.latitude,
-                    longitude = attr.longitude,
-                    cityQuery = city.name
+                    name = attr.name, location = loc, category = "Local Attraction", summary = attr.detail,
+                    imageUrl = null, galleryUrls = emptyList(), wikiUrl = attr.website,
+                    latitude = attr.latitude, longitude = attr.longitude, cityQuery = city.name
                 )
-            }
+            }, city.name)
         }
-        if (photos.isNotEmpty()) {
-            return photos.take(5).mapIndexed { i, photo ->
-                MostVisitedPlace(
-                    name = if (i == 0) city.name else "${city.name} Highlight ${i + 1}",
-                    location = loc,
-                    category = "Destination View",
-                    summary = "Scenic view of ${city.name}. Tap to inspect photos and plan your trip.",
-                    imageUrl = photo,
-                    galleryUrls = photos.take(6),
-                    wikiUrl = "https://en.wikipedia.org/wiki/" + enc(city.name).replace("+", "_"),
-                    latitude = city.latitude,
-                    longitude = city.longitude,
-                    cityQuery = city.name
-                )
-            }
-        }
-        return listOf(
+        return resolveImages(listOf(
             MostVisitedPlace(
-                name = city.name,
-                location = loc,
-                category = "Destination",
+                name = city.name, location = loc, category = "Destination",
                 summary = "Explore ${city.name}, view weather and plan your itinerary.",
-                imageUrl = null,
-                galleryUrls = emptyList(),
-                wikiUrl = "https://en.wikipedia.org/wiki/" + enc(city.name).replace("+", "_"),
-                latitude = city.latitude,
-                longitude = city.longitude,
-                cityQuery = city.name
+                imageUrl = null, galleryUrls = emptyList(), wikiUrl = wiki,
+                latitude = city.latitude, longitude = city.longitude, cityQuery = city.name
             )
-        )
+        ), city.region)
     }
 
     private fun isUsefulImageUrl(url: String?, titleHint: String = ""): Boolean {
@@ -642,26 +601,14 @@ object CityDataRepository {
         val lat = city.latitude
         val lon = city.longitude
         val query = "[out:json][timeout:25];(" +
-            "nwr[\"tourism\"~\"hotel|hostel|guest_house\"](around:12000,$lat,$lon);" +
-            "nwr[\"amenity\"~\"restaurant|cafe\"](around:12000,$lat,$lon);" +
-            "nwr[\"tourism\"~\"attraction|museum|viewpoint|theme_park|zoo|camp_site\"](around:12000,$lat,$lon);" +
-            "nwr[\"historic\"~\"monument|fort|palace|castle|memorial|ruins|archaeological_site\"](around:12000,$lat,$lon);" +
-            "nwr[\"natural\"~\"waterfall|peak|cave_entrance|spring|beach\"](around:12000,$lat,$lon);" +
-            ");out center;"
-        val connection = URL("https://overpass-api.de/api/interpreter").openConnection() as HttpURLConnection
-        connection.requestMethod = "POST"
-        connection.doOutput = true
-        connection.connectTimeout = 12000
-        connection.readTimeout = 30000
-        connection.setRequestProperty("User-Agent", "FlipDoor/1.0 (Android travel discovery app)")
-        connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
+            "nwr[\"tourism\"~\"hotel|hostel|guest_house\"](around:10000,$lat,$lon);" +
+            "nwr[\"amenity\"~\"restaurant|cafe\"](around:10000,$lat,$lon);" +
+            "nwr[\"tourism\"~\"attraction|museum|viewpoint|theme_park|zoo|camp_site\"](around:10000,$lat,$lon);" +
+            "nwr[\"historic\"~\"monument|fort|palace|castle|memorial|ruins|archaeological_site\"](around:10000,$lat,$lon);" +
+            "nwr[\"natural\"~\"waterfall|peak|cave_entrance|spring|beach\"](around:10000,$lat,$lon);" +
+            ");out center 150;"
         return try {
-            connection.outputStream.use { it.write(("data=" + enc(query)).toByteArray(Charsets.UTF_8)) }
-            val code = connection.responseCode
-            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
-            val body = stream.bufferedReader().use { it.readText() }
-            if (code !in 200..299) throw IllegalStateException("Places service temporarily unavailable")
-            val elements = JSONObject(body).optJSONArray("elements") ?: return emptyList()
+            val elements = GeoRepository.overpass(query).optJSONArray("elements") ?: return emptyList()
             (0 until elements.length()).mapNotNull { i ->
                 val e = elements.getJSONObject(i)
                 val tags = e.optJSONObject("tags") ?: return@mapNotNull null
@@ -687,8 +634,8 @@ object CityDataRepository {
                     .ifBlank { "OpenStreetMap listing" }
                 CityPlace(name, type, detail, pLat, pLon, tags.optString("website").takeIf { it.startsWith("http") })
             }.distinctBy { it.name.lowercase() }.sortedBy { it.name.lowercase() }.take(100)
-        } finally {
-            connection.disconnect()
+        } catch (e: java.io.IOException) {
+            emptyList()
         }
     }
 

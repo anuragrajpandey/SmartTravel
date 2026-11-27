@@ -15,7 +15,7 @@ object ImageLoader {
     private val cache = object : LruCache<String, Bitmap>(maxKb) {
         override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount / 1024
     }
-    private val executor = Executors.newFixedThreadPool(4)
+    private val executor = Executors.newFixedThreadPool(6)
     private val mainHandler = Handler(Looper.getMainLooper())
 
     fun load(url: String?, imageView: ImageView, onResult: ((Boolean) -> Unit)? = null) {
@@ -34,6 +34,8 @@ object ImageLoader {
         }
         imageView.setImageDrawable(null)
         executor.execute {
+            // The view may have been recycled or re-bound while this job waited in the queue.
+            if (imageView.tag != url) return@execute
             val bitmap = runCatching { downloadBitmap(url) }.getOrNull()
             if (bitmap != null) {
                 cache.put(url, bitmap)
@@ -43,7 +45,7 @@ object ImageLoader {
                     if (bitmap != null && !bitmap.isRecycled) {
                         imageView.alpha = 0f
                         imageView.setImageBitmap(bitmap)
-                        imageView.animate().alpha(1f).setDuration(220).start()
+                        imageView.animate().alpha(1f).setDuration(160).start()
                         onResult?.invoke(true)
                     } else {
                         onResult?.invoke(false)
@@ -57,8 +59,8 @@ object ImageLoader {
         var currentUrl = rawUrl
         repeat(3) {
             val connection = (URL(currentUrl).openConnection() as HttpURLConnection).apply {
-                connectTimeout = 10000
-                readTimeout = 15000
+                connectTimeout = 7000
+                readTimeout = 12000
                 instanceFollowRedirects = true
                 setRequestProperty("User-Agent", "FlipDoor/1.0 (Android travel discovery app)")
             }
@@ -76,10 +78,10 @@ object ImageLoader {
                 BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
                 var sampleSize = 1
                 val maxDim = maxOf(bounds.outWidth, bounds.outHeight)
-                while (maxDim / sampleSize > 1200) {
+                while (maxDim / sampleSize > 900) {
                     sampleSize *= 2
                 }
-                val decodeOpts = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+                val decodeOpts = BitmapFactory.Options().apply { inSampleSize = sampleSize; inPreferredConfig = Bitmap.Config.RGB_565 }
                 return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOpts)
             } finally {
                 connection.disconnect()
