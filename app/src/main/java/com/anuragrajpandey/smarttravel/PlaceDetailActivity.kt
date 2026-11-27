@@ -96,7 +96,7 @@ class PlaceDetailActivity : AppCompatActivity() {
             })
         }
         paintSave(isPlaceSaved(place.name))
-        saveTop.setOnClickListener { savePlace(place); paintSave(true) }
+        saveTop.setOnClickListener { val nowSaved = !isPlaceSaved(place.name); if (nowSaved) savePlace(place) else removeSavedPlace(place.name); paintSave(nowSaved) }
         root.addView(Ui.topBar(this, place.name, ink, listOf(saveTop)))
 
         val scroll = NestedScrollView(this)
@@ -278,6 +278,16 @@ class PlaceDetailActivity : AppCompatActivity() {
         return prefs.getString("saved", null).equals(name, ignoreCase = true)
     }
 
+    private fun removeSavedPlace(name: String) {
+        val old = runCatching { JSONArray(prefs.getString("saved_places", "[]")) }.getOrDefault(JSONArray())
+        val kept = JSONArray()
+        for (i in 0 until old.length()) {
+            val item = old.optJSONObject(i) ?: continue
+            if (!item.optString("name").equals(name, ignoreCase = true)) kept.put(item)
+        }
+        prefs.edit().putString("saved_places", kept.toString()).remove("saved").apply()
+        Toast.makeText(this, "Removed $name from My Trips", Toast.LENGTH_SHORT).show()
+    }
     private fun savePlace(p: MostVisitedPlace) {
         prefs.edit().putString("saved", p.name).apply()
         val arr = runCatching { JSONArray(prefs.getString("saved_places", "[]")) }.getOrDefault(JSONArray())
