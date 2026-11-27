@@ -281,6 +281,30 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun rememberSearch(query: String) {
+        val value = query.trim()
+        if (value.isBlank()) return
+        val previous = runCatching { JSONArray(prefs.getString("search_history", "[]")) }.getOrDefault(JSONArray())
+        val updated = JSONArray().put(value)
+        for (i in 0 until previous.length()) {
+            val old = previous.optString(i)
+            if (!old.equals(value, true) && updated.length() < 12) updated.put(old)
+        }
+        prefs.edit().putString("search_history", updated.toString()).apply()
+    }
+
+    private fun recommendations() {
+        val history = runCatching { JSONArray(prefs.getString("search_history", "[]")) }.getOrDefault(JSONArray())
+        section("Picked for you", "Suggestions based on your searches and places explored")
+        if (history.length() == 0) {
+            content.addView(txt("Search a destination or open a place to start building your recommendations.", 13, MUTED))
+            return
+        }
+        for (i in 0 until minOf(history.length(), 5)) {
+            val query = history.optString(i)
+            tile(query, "Recently explored · tap to explore again", R.drawable.ic_explore) { openCityGuide(query) }
+        }
+    }
     private fun profile() {
         val name = prefs.getString("user_name", "Traveller") ?: "Traveller"
         heading("YOUR PROFILE", "Hello, " + name, "Your details, trips and saved places.")
@@ -303,10 +327,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openCityGuide(cityQuery: String) {
+        rememberSearch(cityQuery)
         startActivity(Intent(this, CityExplorerActivity::class.java).putExtra("city_query", cityQuery))
     }
 
     private fun openPlaceDetail(place: MostVisitedPlace) {
+        rememberSearch(place.name)
         startActivity(Intent(this, PlaceDetailActivity::class.java).putExtra("place", place))
     }
 
@@ -425,14 +451,16 @@ class MainActivity : AppCompatActivity() {
         content.addView(txt("Explore around you", 28, FG, true))
         val c = meCity
         if (c == null) {
-            content.addView(txt("Areas, places, hotels and food near where you are.", 14, MUTED))
-            locationCard()
+            content.addView(txt("Explore destinations picked from your interests.", 14, MUTED))
             searchHero()
+            recommendations()
+            locationCard()
             featureGrid()
             return
         }
         content.addView(Ui.iconText(this, R.drawable.ic_place, locationLabel(), 14f, MUTED, 16, true))
         searchHero()
+        recommendations()
         val gen = exploreGeneration
 
         // 1. Places around the user
