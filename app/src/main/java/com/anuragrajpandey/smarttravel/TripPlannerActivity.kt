@@ -342,7 +342,13 @@ class TripPlannerActivity : AppCompatActivity() {
 
         // Actions
         val acts = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        acts.addView(Ui.button(this, "Save trip", R.drawable.ic_favorite, Color.WHITE, Ui.ACCENT, 14) { saveTrip(p, total) },
+        val tripSaved = runCatching { JSONArray(prefs.getString("planned_trips", "[]")) }.getOrDefault(JSONArray()).let { arr ->
+            (0 until arr.length()).any { idx ->
+                val item = arr.optJSONObject(idx) ?: return@any false
+                item.optString("destination").equals(p.input.dest.name, true) && item.optString("startIso") == p.input.startIso && item.optString("endIso") == p.input.endIso
+            }
+        }
+        acts.addView(Ui.button(this, if (tripSaved) "Remove saved trip" else "Save trip", R.drawable.ic_favorite, Color.WHITE, Ui.ACCENT, 14) { saveTrip(p, total) },
             LinearLayout.LayoutParams(0, dp(52), 1f).apply { rightMargin = dp(6) })
         acts.addView(Ui.button(this, "Share", R.drawable.ic_arrow_forward, Ui.ACCENT, Ui.ACCENT_SOFT, 14) { share(p, total) },
             LinearLayout.LayoutParams(0, dp(52), 1f).apply { leftMargin = dp(6) })
