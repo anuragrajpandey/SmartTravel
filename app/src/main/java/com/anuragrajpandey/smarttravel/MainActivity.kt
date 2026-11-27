@@ -91,7 +91,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showFirstRunSetup() {
-        val input = EditText(this).apply { hint = "Your name"; singleLine = true }
+        val input = EditText(this).apply { hint = "Your name"; setSingleLine(true) }
         val wrap = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(22), dp(8), dp(22), dp(2)); addView(txt("Make every journey feel personal.", 14, MUTED)); addView(input) }
         AlertDialog.Builder(this).setTitle("Welcome to FlipDoor").setMessage("What should we call you?").setView(wrap).setCancelable(false)
             .setPositiveButton("Continue") { _, _ ->
