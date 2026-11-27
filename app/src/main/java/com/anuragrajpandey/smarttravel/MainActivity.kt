@@ -302,14 +302,21 @@ class MainActivity : AppCompatActivity() {
 
     private fun recommendations() {
         val history = runCatching { JSONArray(prefs.getString("search_history", "[]")) }.getOrDefault(JSONArray())
-        section("Picked for you", "Suggestions based on your searches and places explored")
+        section("Picked for you", "Ideas inspired by the places you have explored")
         if (history.length() == 0) {
             content.addView(txt("Search a destination or open a place to start building your recommendations.", 13, MUTED))
             return
         }
-        for (i in 0 until minOf(history.length(), 5)) {
-            val query = history.optString(i)
-            tile(query, "Recently explored · tap to explore again", R.drawable.ic_explore) { openCityGuide(query) }
+        val recent = history.optString(0)
+        tile("More to discover in " + recent, "Popular attractions and local favourites", R.drawable.ic_explore) { openCityGuide("popular places in " + recent) }
+        tile("Hidden gems around " + recent, "Quieter places based on your recent interest", R.drawable.ic_place) { openCityGuide("hidden gems in " + recent) }
+        tile("Food to try in " + recent, "Regional dishes and local food spots", R.drawable.ic_restaurant) { openCityGuide("famous food in " + recent) }
+        if (history.length() > 1) {
+            section("Continue exploring")
+            for (i in 1 until minOf(history.length(), 5)) {
+                val query = history.optString(i)
+                tile(query, "From your recent searches", R.drawable.ic_search) { openCityGuide(query) }
+            }
         }
     }
     private fun profile() {
