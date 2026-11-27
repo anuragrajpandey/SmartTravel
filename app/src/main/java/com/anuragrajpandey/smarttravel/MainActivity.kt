@@ -70,8 +70,7 @@ class MainActivity : AppCompatActivity() {
             }
         })
         show("Explore")
-        // Ask for the user's location as soon as the app launches.
-        if (LocationHelper.hasPermission(this)) resolveLocation() else permLauncher.launch(LocationHelper.PERMISSIONS)
+        if (!prefs.getBoolean("onboarding_complete", false)) showFirstRunSetup()
     }
 
     override fun onResume() {
@@ -84,6 +83,21 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
+    private fun showFirstRunSetup() {
+        val input = EditText(this).apply { hint = "Your name"; singleLine = true }
+        val wrap = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(22), dp(8), dp(22), dp(2)); addView(txt("Make every journey feel personal.", 14, MUTED)); addView(input) }
+        AlertDialog.Builder(this).setTitle("Welcome to FlipDoor").setMessage("What should we call you?").setView(wrap).setCancelable(false)
+            .setPositiveButton("Continue") { _, _ ->
+                prefs.edit().putString("user_name", input.text.toString().trim().ifBlank { "Traveller" }).apply()
+                AlertDialog.Builder(this).setTitle("Use your location?")
+                    .setMessage("FlipDoor can find nearby places once to personalise your first Explore screen. You can skip this and use search-based suggestions instead.")
+                    .setNegativeButton("Not now") { _, _ -> prefs.edit().putBoolean("onboarding_complete", true).apply(); show("Explore") }
+                    .setPositiveButton("Use my location") { _, _ ->
+                        prefs.edit().putBoolean("onboarding_complete", true).apply()
+                        if (LocationHelper.hasPermission(this)) resolveLocation() else permLauncher.launch(LocationHelper.PERMISSIONS)
+                    }.show()
+            }.show()
+    }
     private fun resolveLocation() {
         locationState = "locating"
         refreshLocationTabs()
