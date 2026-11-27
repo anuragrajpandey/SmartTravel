@@ -70,7 +70,14 @@ class MainActivity : AppCompatActivity() {
             }
         })
         show("Explore")
-        if (!prefs.getBoolean("onboarding_complete", false)) showFirstRunSetup()
+        if (!prefs.getBoolean("onboarding_complete", false)) {
+            showFirstRunSetup()
+        } else if (prefs.getBoolean("location_opt_in", false)) {
+            LocationHelper.saved(this)?.let { saved ->
+                meCity = CityLocation(saved.name, saved.name, saved.country, saved.lat, saved.lon)
+                locationState = "ready"
+            }
+        }
     }
 
     override fun onResume() {
@@ -91,9 +98,9 @@ class MainActivity : AppCompatActivity() {
                 prefs.edit().putString("user_name", input.text.toString().trim().ifBlank { "Traveller" }).apply()
                 AlertDialog.Builder(this).setTitle("Use your location?")
                     .setMessage("FlipDoor can find nearby places once to personalise your first Explore screen. You can skip this and use search-based suggestions instead.")
-                    .setNegativeButton("Not now") { _, _ -> prefs.edit().putBoolean("onboarding_complete", true).apply(); show("Explore") }
+                    .setNegativeButton("Not now") { _, _ -> prefs.edit().putBoolean("onboarding_complete", true).putBoolean("location_opt_in", false).apply(); show("Explore") }
                     .setPositiveButton("Use my location") { _, _ ->
-                        prefs.edit().putBoolean("onboarding_complete", true).apply()
+                        prefs.edit().putBoolean("onboarding_complete", true).putBoolean("location_opt_in", true).apply()
                         if (LocationHelper.hasPermission(this)) resolveLocation() else permLauncher.launch(LocationHelper.PERMISSIONS)
                     }.show()
             }.show()
@@ -324,6 +331,21 @@ class MainActivity : AppCompatActivity() {
             val place = places.optJSONObject(i) ?: continue
             tile(place.optString("name"), place.optString("location"), R.drawable.ic_place)
         }
+        val history = runCatching { JSONArray(prefs.getString("search_history", "[]")) }.getOrDefault(JSONArray())
+        section("Recently explored", history.length().toString() + " recent searches")
+        for (i in 0 until minOf(history.length(), 8)) {
+            val query = history.optString(i)
+            tile(query, "Search again", R.drawable.ic_search) { openCityGuide(query) }
+        }
+        content.addView(btn("Edit name") {
+            val input = EditText(this).apply { setText(name) }
+            AlertDialog.Builder(this).setTitle("Your name").setView(input)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Save") { _, _ ->
+                    prefs.edit().putString("user_name", input.text.toString().trim().ifBlank { "Traveller" }).apply()
+                    show("Profile")
+                }.show()
+        }, LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(16) })
     }
 
     private fun openCityGuide(cityQuery: String) {
@@ -347,6 +369,7 @@ class MainActivity : AppCompatActivity() {
     private fun openTranslator() = startActivity(Intent(this, TranslatorActivity::class.java))
 
     private fun openArea(sug: Suggestion) {
+        rememberSearch(sug.name)
         startActivity(
             Intent(this, CityExplorerActivity::class.java)
                 .putExtra("city_query", sug.name).putExtra("lat", sug.lat).putExtra("lon", sug.lon)
