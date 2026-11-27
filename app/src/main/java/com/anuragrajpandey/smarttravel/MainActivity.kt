@@ -231,12 +231,13 @@ class MainActivity : AppCompatActivity() {
             elevation = dp(8).toFloat()
             setPadding(dp(6), dp(6), dp(6), dp(6))
         }
-        listOf("Explore", "Hotels", "Gems", "Tools", "Trips").forEach { n ->
+        listOf("Explore", "Hotels", "Gems", "Tools", "Trips", "Profile").forEach { n ->
             val icon = when (n) {
                 "Explore" -> R.drawable.ic_home
                 "Hotels" -> R.drawable.ic_hotel
                 "Gems" -> R.drawable.ic_explore
                 "Tools" -> R.drawable.ic_build
+                "Profile" -> R.drawable.ic_home
                 else -> R.drawable.ic_favorite
             }
             val selected = n == when (tab) { "Food" -> "Explore"; "Budget" -> "Tools"; else -> tab }
@@ -273,9 +274,31 @@ class MainActivity : AppCompatActivity() {
             "Explore" -> explore()
             "Gems" -> discover()
             "Tools" -> tools()
+            "Profile" -> profile()
             "Food" -> food()
             "Budget" -> budget()
             else -> trips()
+        }
+    }
+
+    private fun profile() {
+        val name = prefs.getString("user_name", "Traveller") ?: "Traveller"
+        heading("YOUR PROFILE", "Hello, " + name, "Your details, trips and saved places.")
+        tile("Personal details", "Name: " + name + " · Stored on this device", R.drawable.ic_home)
+        val plans = runCatching { JSONArray(prefs.getString("planned_trips", "[]")) }.getOrDefault(JSONArray())
+        section("My trips", plans.length().toString() + " saved trip(s)")
+        if (plans.length() == 0) tile("No trips yet", "Create a trip plan and it will appear here.")
+        for (i in plans.length() - 1 downTo 0) {
+            val trip = plans.optJSONObject(i) ?: continue
+            val destination = trip.optString("destination")
+            tile(trip.optString("name", destination), destination + " · " + trip.optString("start"), R.drawable.ic_luggage) { openCityGuide(destination) }
+        }
+        val places = runCatching { JSONArray(prefs.getString("saved_places", "[]")) }.getOrDefault(JSONArray())
+        section("Saved places", places.length().toString() + " place(s)")
+        if (places.length() == 0) tile("No saved places", "Save a place from its details page.")
+        for (i in places.length() - 1 downTo 0) {
+            val place = places.optJSONObject(i) ?: continue
+            tile(place.optString("name"), place.optString("location"), R.drawable.ic_place)
         }
     }
 
