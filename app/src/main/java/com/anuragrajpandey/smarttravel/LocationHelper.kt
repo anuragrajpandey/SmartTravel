@@ -40,22 +40,28 @@ object LocationHelper {
             }
             if (provider == null) { callback(best); return }
             val fallback = best
-            val listener = object : LocationListener {
-                override fun onLocationChanged(location: Location) {
-                    runCatching { lm.removeUpdates(this) }
-                    callback(location)
-                }
+            var done = false
+            val handler = android.os.Handler(Looper.getMainLooper())
+            lateinit var listener: LocationListener
+            fun finish(l: Location?) {
+                if (done) return
+                done = true
+                handler.removeCallbacksAndMessages(null)
+                runCatching { lm.removeUpdates(listener) }
+                callback(l)
+            }
+            listener = object : LocationListener {
+                override fun onLocationChanged(location: Location) = finish(location)
 
-                override fun onProviderDisabled(provider: String) {
-                    runCatching { lm.removeUpdates(this) }
-                    callback(fallback)
-                }
+                override fun onProviderDisabled(provider: String) = finish(fallback)
 
                 override fun onProviderEnabled(provider: String) = Unit
 
                 @Deprecated("Deprecated by Android")
                 override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) = Unit
             }
+            // No fix within 12 s (indoors, GPS cold start): use the last known position instead of waiting forever.
+            handler.postDelayed({ finish(fallback) }, 12_000)
             lm.requestSingleUpdate(provider, listener, Looper.getMainLooper())
         } catch (e: SecurityException) {
             callback(null)
