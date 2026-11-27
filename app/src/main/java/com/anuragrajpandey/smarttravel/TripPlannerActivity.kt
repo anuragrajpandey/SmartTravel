@@ -381,15 +381,24 @@ class TripPlannerActivity : AppCompatActivity() {
     private fun saveTrip(p: TripPlan, total: Double) {
         val trips = runCatching { JSONArray(prefs.getString("planned_trips", "[]")) }.getOrDefault(JSONArray())
         val i = p.input
-        trips.put(
-            JSONObject().put("name", i.name).put("destination", i.dest.name)
+        val existing = (0 until trips.length()).firstOrNull { idx ->
+            val item = trips.optJSONObject(idx) ?: return@firstOrNull false
+            item.optString("destination").equals(i.dest.name, true) && item.optString("startIso") == i.startIso && item.optString("endIso") == i.endIso
+        }
+        if (existing != null) {
+            val kept = JSONArray()
+            for (idx in 0 until trips.length()) if (idx != existing) kept.put(trips.getJSONObject(idx))
+            prefs.edit().putString("planned_trips", kept.toString()).apply()
+            Toast.makeText(this, "Trip removed from saved trips.", Toast.LENGTH_SHORT).show()
+        } else {
+            trips.put(JSONObject().put("name", i.name).put("destination", i.dest.name)
                 .put("start", shown.format(start.time)).put("end", shown.format(end.time))
                 .put("days", p.dayCount).put("travellers", i.travellers).put("budget", total)
                 .put("startIso", i.startIso).put("endIso", i.endIso).put("tier", tier)
-                .put("origin", i.origin?.name ?: "")
-        )
-        prefs.edit().putString("planned_trips", trips.toString()).apply()
-        Toast.makeText(this, "Trip saved on this device.", Toast.LENGTH_SHORT).show()
+                .put("origin", i.origin?.name ?: ""))
+            prefs.edit().putString("planned_trips", trips.toString()).apply()
+            Toast.makeText(this, "Trip saved on this device.", Toast.LENGTH_SHORT).show()
+        }
         showSaved()
     }
 
