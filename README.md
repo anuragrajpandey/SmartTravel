@@ -19,17 +19,24 @@ FlipDoor is a native Android travel companion built with Kotlin and Android View
 ## Weather
 A dedicated weather screen: sky gradient that follows conditions and day/night, large temperature, hourly strip, 7-day forecast and past-7-day views with temperature range bars, and detail tiles (feels like, humidity, wind, UV, visibility, pressure, sunrise/sunset, rain). Search any city or use your location.
 
+## Search (India only)
+Every search box (home, area guide, hotels, weather, trip planner) shows live suggestions as you type, limited to places in India: cities, towns and villages plus landmarks and natural spots.
+
 ## Trip planner
-- Create a named trip and destination.
-- Select start and end dates with native date pickers.
-- Enter traveller count, accommodation per night, food per person/day, transport and activities.
-- Calculate trip total, per-traveller estimate and duration.
-- Save multiple trip plans locally on the device. No account or cloud sync is currently provided.
+Pick where you're starting from and going to, dates, travellers and a style (Budget / Comfort / Luxury). The plan is built from live internet data:
+- Weather forecast for your travel dates (Open-Meteo)
+- Real nearby attractions, ordered so each day's stops are close together, with photos
+- Hotels from OpenStreetMap with estimated prices and a live-price button
+- Famous food of the region
+- A budget breakdown (travel by distance, stay, food, local transport, activities, buffer) that updates instantly when you change style or travellers
+- Save, reopen (re-planned with fresh data) and share plans
+
+## Translator
+Online translation as you type (27 languages including 14 Indian languages), language swap, copy, speak aloud and travel phrases. Nothing to download. Uses Google's web translate endpoint with MyMemory as a fallback; for a production release, swap in an official API such as Google Cloud Translation.
 
 ## Other features
 - Explore, Hotels, Gems, Tools and Trips navigation with vector icons; edge-to-edge layout that respects the notch/camera cutout and system bars.
 - Quick budget calculator.
-- Google ML Kit translation with downloadable language models for offline use after download.
 - Launcher icon generated from `assets/FlipDoor.png`.
 
 ## Data providers and limitations
@@ -38,7 +45,7 @@ A dedicated weather screen: sky gradient that follows conditions and day/night, 
 - Places: © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), ODbL. Listings depend on map coverage; prices, ratings and availability are not verified.
 - City and food research: [Wikipedia/Wikimedia](https://www.mediawiki.org/wiki/Wikimedia_REST_API). Results are references, not popularity rankings.
 - Public Overpass services can be busy. A production launch should use a managed provider or controlled backend/cache.
-- Hotel booking, transport tickets, payments, user accounts, cloud sync and turn-by-turn navigation are not implemented. Hotel price ranges are estimates unless a live price is opened.
+- Offline translation, hotel booking, transport tickets, payments, user accounts, cloud sync and turn-by-turn navigation are not implemented. Hotel price ranges are estimates unless a live price is opened.
 - Check provider terms before commercial use. Open-Meteo's free access is intended for non-commercial use.
 
 ## Build

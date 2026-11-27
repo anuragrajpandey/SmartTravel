@@ -28,6 +28,43 @@ object HotelRepository {
     private val usdKind = mapOf("hotel" to 90, "resort" to 170, "motel" to 70, "guest_house" to 65, "hostel" to 28, "apartment" to 100, "chalet" to 120)
 
     fun search(lat: Double, lon: Double, inIndia: Boolean, radiusM: Int = 6000): List<Hotel> {
+        return try {
+            searchOverpass(lat, lon, inIndia, radiusM)
+        } catch (e: Exception) {
+            // Overpass unreachable: fall back to Photon (also OpenStreetMap data).
+            searchPhoton(lat, lon, inIndia).ifEmpty { throw e }
+        }
+    }
+
+    private fun searchPhoton(lat: Double, lon: Double, inIndia: Boolean): List<Hotel> {
+        val currency = if (inIndia) "₹" else "$"
+        val seen = HashSet<String>()
+        val out = ArrayList<Hotel>()
+        for (q in listOf("hotel", "resort", "guest house", "hostel")) {
+            val url = "https://photon.komoot.io/api/?q=${java.net.URLEncoder.encode(q, "UTF-8")}&lat=$lat&lon=$lon&limit=25&lang=en&osm_tag=tourism"
+            val f = runCatching { org.json.JSONObject(CityDataRepository.get(url)).optJSONArray("features") }.getOrNull() ?: continue
+            for (i in 0 until f.length()) {
+                val o = f.getJSONObject(i)
+                val p = o.optJSONObject("properties") ?: continue
+                val kind = p.optString("osm_value")
+                if (kind !in listOf("hotel", "hostel", "guest_house", "motel", "apartment", "resort", "chalet")) continue
+                val name = p.optString("name").trim()
+                val c = o.optJSONObject("geometry")?.optJSONArray("coordinates") ?: continue
+                val hLat = c.getDouble(1); val hLon = c.getDouble(0)
+                val dist = GeoRepository.haversineKm(lat, lon, hLat, hLon)
+                if (name.isBlank() || dist > 12 || !seen.add(name.lowercase(Locale.US))) continue
+                val base = (if (inIndia) inrKind else usdKind)[kind] ?: (if (inIndia) 2800 else 90)
+                val step = if (inIndia) 100 else 5
+                val addr = listOf(p.optString("street"), p.optString("city")).filter { it.isNotBlank() }.joinToString(", ")
+                out.add(Hotel(name, kind, null, hLat, hLon, dist, null, null, addr, emptyList(), null, currency,
+                    ((base * 0.8) / step).toInt() * step, ((base * 1.35) / step).toInt() * step,
+                    (if (kind == "hotel" || kind == "resort") 6.0 else 0.0) - dist * 1.2))
+            }
+        }
+        return out
+    }
+
+    private fun searchOverpass(lat: Double, lon: Double, inIndia: Boolean, radiusM: Int): List<Hotel> {
         val q = "[out:json][timeout:25];nwr[\"tourism\"~\"^(hotel|hostel|guest_house|motel|apartment|resort|chalet)$\"][\"name\"]" +
             "(around:$radiusM,$lat,$lon);out center 200;"
         val els = GeoRepository.overpass(q).optJSONArray("elements") ?: return emptyList()

@@ -29,7 +29,7 @@ class CityExplorerActivity : AppCompatActivity() {
     private val ink = Color.rgb(23, 43, 77)
     private val muted = Color.rgb(105, 119, 140)
     private val bg = Color.rgb(245, 247, 251)
-    private lateinit var query: EditText
+    private lateinit var suggest: SuggestField
     private lateinit var progress: ProgressBar
     private lateinit var body: LinearLayout
     private lateinit var status: TextView
@@ -39,7 +39,7 @@ class CityExplorerActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         buildScreen()
         val initial = intent.getStringExtra("city_query").orEmpty()
-        query.setText(initial)
+        suggest.setText(initial)
         if (intent.hasExtra("lat") && intent.hasExtra("lon")) {
             // Opened from "Areas near you": use the exact coordinates instead of re-geocoding the name.
             val preset = CityLocation(
@@ -76,26 +76,9 @@ class CityExplorerActivity : AppCompatActivity() {
             background = panel()
             setPadding(dp(14), dp(12), dp(14), dp(12))
         }
-        query = EditText(this).apply {
-            hint = "Search any city or place, e.g. Manali, Paris"
-            setSingleLine(true)
-            textSize = 15f
-            setTextColor(ink)
-            setHintTextColor(muted)
-            background = panel(bg, 12)
-            setPadding(dp(13), dp(12), dp(13), dp(12))
-            imeOptions = EditorInfo.IME_ACTION_SEARCH
-            setOnEditorActionListener { _, actionId, _ ->
-                if (actionId == EditorInfo.IME_ACTION_SEARCH) {
-                    search(text.toString())
-                    true
-                } else {
-                    false
-                }
-            }
-        }
-        searchPanel.addView(query, LinearLayout.LayoutParams(-1, dp(50)))
-        val go = Ui.button(this, "Explore destination & photos", R.drawable.ic_search, Color.WHITE, blue, 12) { search(query.text.toString()) }
+        suggest = SuggestField(this, "Search any place in India", { search(it.name, it.toCity()) }, { search(it) })
+        searchPanel.addView(suggest.view, LinearLayout.LayoutParams(-1, -2))
+        val go = Ui.button(this, "Explore destination & photos", R.drawable.ic_search, Color.WHITE, blue, 12) { search(suggest.text()) }
         searchPanel.addView(go, LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(9) })
         root.addView(searchPanel, LinearLayout.LayoutParams(-1, -2).apply {
             setMargins(dp(16), dp(5), dp(16), dp(8))
@@ -128,7 +111,7 @@ class CityExplorerActivity : AppCompatActivity() {
     private fun search(value: String, preset: CityLocation? = null) {
         val city = value.trim()
         if (city.isBlank() && preset == null) {
-            query.error = "Enter a city name"
+            suggest.input.error = "Enter a place in India"
             return
         }
         val gen = ++searchGeneration

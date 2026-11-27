@@ -89,30 +89,34 @@ class WeatherActivity : AppCompatActivity() {
     }
 
     private fun promptCity() {
-        val input = EditText(this).apply {
-            hint = "City, e.g. Mathura, Paris"
-            setSingleLine(true)
-            setPadding(dp(16), dp(12), dp(16), dp(12))
-        }
-        AlertDialog.Builder(this)
-            .setTitle("Weather for another city")
-            .setView(input)
-            .setPositiveButton("Show") { _, _ ->
-                val q = input.text.toString().trim()
-                if (q.isBlank()) return@setPositiveButton
-                body.removeAllViews()
-                body.addView(ProgressBar(this), LinearLayout.LayoutParams(-1, dp(80)).apply { topMargin = dp(80) })
-                thread {
-                    try {
-                        val c = CityDataRepository.geocodeCity(q)
-                        runOnUiThread { lat = c.latitude; lon = c.longitude; placeName = c.name; load() }
-                    } catch (e: Exception) {
-                        runOnUiThread { body.removeAllViews(); body.addView(msg(e.message ?: "City not found")) }
-                    }
-                }
-            }
+        var dialog: AlertDialog? = null
+        val field = SuggestField(this, "Search a place in India", { sug ->
+            dialog?.dismiss()
+            lat = sug.lat; lon = sug.lon; placeName = sug.name
+            load()
+        }, { q ->
+            dialog?.dismiss()
+            if (q.isNotBlank()) searchTyped(q)
+        })
+        val wrap = LinearLayout(this).apply { setPadding(dp(16), dp(8), dp(16), dp(4)); addView(field.view, LinearLayout.LayoutParams(-1, -2)) }
+        dialog = AlertDialog.Builder(this)
+            .setTitle("Weather for another place")
+            .setView(wrap)
             .setNegativeButton("Cancel", null)
             .show()
+    }
+
+    private fun searchTyped(q: String) {
+        body.removeAllViews()
+        body.addView(ProgressBar(this), LinearLayout.LayoutParams(-1, dp(80)).apply { topMargin = dp(80) })
+        Net.pool.execute {
+            try {
+                val c = CityDataRepository.geocodeCity(q)
+                runOnUiThread { lat = c.latitude; lon = c.longitude; placeName = c.name; load() }
+            } catch (e: Exception) {
+                runOnUiThread { body.removeAllViews(); body.addView(msg(e.message ?: "Place not found")) }
+            }
+        }
     }
 
     private fun load() {

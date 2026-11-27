@@ -95,7 +95,8 @@ object MapUi {
             })
         }
         card.addView(frame, FrameLayout.LayoutParams(-1, Ui.dp(ctx, heightDp)))
-        load(web, embedUrl(lat, lon, mode, query))
+        // Start the map a moment after the screen appears so scrolling/first paint stay smooth.
+        web.postDelayed({ load(web, embedUrl(lat, lon, mode, query)) }, 450)
         return card
     }
 
