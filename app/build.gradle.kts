@@ -1,7 +1,7 @@
 plugins { id("com.android.application"); id("org.jetbrains.kotlin.android") }
 val generatedFlipDoorRes = layout.buildDirectory.dir("generated/flipdoorRes")
 val prepareFlipDoorLauncherIcon by tasks.registering(Copy::class) {
- from(rootProject.file("assets/FlipDoor.png"))
+ from(rootProject.file("assets/FlipDoorLogo.png"))
  into(generatedFlipDoorRes.map { it.dir("mipmap-nodpi") })
  rename { "ic_launcher.png" }
 }
